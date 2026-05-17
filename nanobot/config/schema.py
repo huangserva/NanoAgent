@@ -107,6 +107,15 @@ class ModelPresetConfig(Base):
         )
 
 
+class ExternalMemoryConfig(Base):
+    """External memory service configuration."""
+
+    enabled: bool = False
+    db_path: str | None = None
+    retrieval_limit: int = Field(default=3, ge=1, le=20)
+    packet_char_limit: int = Field(default=2000, ge=256, le=8000)
+
+
 class AgentDefaults(Base):
     """Default agent configuration."""
 
@@ -156,6 +165,11 @@ class AgentDefaults(Base):
         serialization_alias="consolidationRatio",
     )  # Consolidation target ratio (0.5 = 50% of budget retained after compression)
     dream: DreamConfig = Field(default_factory=DreamConfig)
+    external_memory: ExternalMemoryConfig = Field(
+        default_factory=ExternalMemoryConfig,
+        validation_alias=AliasChoices("externalMemory"),
+        serialization_alias="externalMemory",
+    )
 
 
 class AgentsConfig(Base):

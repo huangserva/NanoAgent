@@ -341,7 +341,30 @@ class AgentLoop:
             config,
             provider_snapshot_loader,
         )
+        external_memory_enabled_provided = "external_memory_enabled" in extra
+        memory_service_provided = "memory_service" in extra
+        external_memory_bridge_provided = "external_memory_bridge" in extra
         external_memory_enabled = extra.pop("external_memory_enabled", False)
+        memory_service = extra.pop("memory_service", None)
+        external_memory_bridge = extra.pop("external_memory_bridge", None)
+        if not (
+            external_memory_enabled_provided
+            or memory_service_provided
+            or external_memory_bridge_provided
+        ):
+            em = defaults.external_memory
+            if em.enabled:
+                from nanobot.config.paths import get_memory_service_db_path
+                from nanobot.memory_service.store import MemoryStore
+
+                db_path = Path(em.db_path).expanduser() if em.db_path else get_memory_service_db_path()
+                memory_service = MemoryService(MemoryStore(db_path))
+                external_memory_bridge = ExternalMemoryBridge(
+                    memory_service,
+                    workspace=config.workspace_path,
+                    retrieval_limit=em.retrieval_limit,
+                    packet_char_limit=em.packet_char_limit,
+                )
         return cls(
             bus=bus,
             provider=provider,
@@ -368,6 +391,8 @@ class AgentLoop:
             provider_snapshot_loader=provider_snapshot_loader,
             preset_snapshot_loader=preset_snapshot_loader,
             external_memory_enabled=external_memory_enabled,
+            memory_service=memory_service,
+            external_memory_bridge=external_memory_bridge,
             **extra,
         )
 

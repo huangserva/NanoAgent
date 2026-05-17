@@ -159,7 +159,9 @@ async def test_search_documents_chinese_tokenizer_boundary(aiohttp_client, tmp_p
     assert english.status == 200
     assert len((await english.json())["results"]) == 1
     assert chinese.status == 200
-    assert (await chinese.json())["results"] == []
+    chinese_results = (await chinese.json())["results"]
+    assert len(chinese_results) >= 1
+    assert "用户" in chinese_results[0]["content"]
 
 
 @pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
@@ -191,3 +193,119 @@ async def test_get_job_existing_and_missing(aiohttp_client, tmp_path) -> None:
     assert body["status"] == "pending"
     assert body["input"] == {"source": "reserved"}
     assert missing.status == 404
+
+
+def _typed_payload(**overrides):
+    payload = {
+        "user_id": "huang",
+        "memory_type": "preference",
+        "text": "Preference: prefers local SQLite memory",
+        "confidence": 0.82,
+        "evidence_event_id": "event-1",
+        "provenance": {"agent": "nanobot"},
+        "scope": {"workspace": "test"},
+        "dedupe_key": "pref-sqlite",
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
+async def test_typed_memory_upsert_and_get(aiohttp_client, tmp_path) -> None:
+    client = await aiohttp_client(_app(tmp_path))
+
+    created = await client.post("/v1/memory/typed", json=_typed_payload())
+
+    assert created.status == 200
+    created_body = await created.json()
+    assert created_body["created"] is True
+    memory = created_body["memory"]
+    assert memory["memory_type"] == "preference"
+
+    fetched = await client.get(f"/v1/memory/typed/{memory['id']}")
+
+    assert fetched.status == 200
+    fetched_body = await fetched.json()
+    assert fetched_body["id"] == memory["id"]
+    assert fetched_body["text"] == "Preference: prefers local SQLite memory"
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
+async def test_typed_memory_list_filters_by_type(aiohttp_client, tmp_path) -> None:
+    client = await aiohttp_client(_app(tmp_path))
+    await client.post("/v1/memory/typed", json=_typed_payload(dedupe_key="pref"))
+    await client.post(
+        "/v1/memory/typed",
+        json=_typed_payload(
+            memory_type="project_fact",
+            text="Project fact: nanobot uses SQLite memory",
+            dedupe_key="project",
+        ),
+    )
+
+    listed = await client.get(
+        "/v1/memory/typed",
+        params={"user_id": "huang", "memory_type": "project_fact", "limit": "50"},
+    )
+
+    assert listed.status == 200
+    memories = (await listed.json())["memories"]
+    assert len(memories) == 1
+    assert memories[0]["memory_type"] == "project_fact"
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
+async def test_typed_memory_retire_lifecycle(aiohttp_client, tmp_path) -> None:
+    client = await aiohttp_client(_app(tmp_path))
+    created = await client.post("/v1/memory/typed", json=_typed_payload())
+    memory_id = (await created.json())["memory"]["id"]
+
+    retired = await client.post(
+        f"/v1/memory/typed/{memory_id}/retire",
+        json={"status": "inactive", "reason": "superseded"},
+    )
+    fetched = await client.get(f"/v1/memory/typed/{memory_id}")
+    listed = await client.get("/v1/memory/typed", params={"user_id": "huang"})
+
+    assert retired.status == 200
+    assert (await retired.json())["status"] == "inactive"
+    assert fetched.status == 200
+    assert (await fetched.json())["id"] == memory_id
+    assert listed.status == 200
+    assert (await listed.json())["memories"] == []
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
+async def test_typed_memory_upsert_invalid_type_returns_400(aiohttp_client, tmp_path) -> None:
+    client = await aiohttp_client(_app(tmp_path))
+
+    resp = await client.post("/v1/memory/typed", json=_typed_payload(memory_type="unknown"))
+
+    assert resp.status == 400
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
+async def test_typed_memory_get_missing_returns_404(aiohttp_client, tmp_path) -> None:
+    client = await aiohttp_client(_app(tmp_path))
+
+    resp = await client.get("/v1/memory/typed/missing")
+
+    assert resp.status == 404
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
+async def test_typed_memory_retire_missing_returns_404(aiohttp_client, tmp_path) -> None:
+    client = await aiohttp_client(_app(tmp_path))
+
+    resp = await client.post(
+        "/v1/memory/typed/missing/retire",
+        json={"status": "inactive"},
+    )
+
+    assert resp.status == 404

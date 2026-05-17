@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from nanobot.memory_service.models import TurnEndRequest
-from nanobot.memory_service.store import MemoryStore
+from nanobot.memory_service.store import MemoryStore, _is_trigram_fts
 
 
 def test_store_initializes_schema_and_writes_event(tmp_path) -> None:
@@ -136,3 +136,98 @@ def test_store_create_and_get_job(tmp_path) -> None:
     assert job is not None
     assert job.status == "pending"
     assert job.input == {"source": "reserved"}
+
+
+def test_fts_trigram_init_repopulates_when_fts_missing_but_base_has_rows(tmp_path) -> None:
+    db_path = tmp_path / "memory.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE events (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                session_id TEXT,
+                source_type TEXT NOT NULL,
+                source_id TEXT,
+                event_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata_json TEXT,
+                provenance_json TEXT NOT NULL,
+                dedupe_key TEXT,
+                created_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+            INSERT INTO events (
+                id, user_id, session_id, source_type, source_id, event_type,
+                content, metadata_json, provenance_json, dedupe_key, created_at, deleted_at
+            ) VALUES (
+                'event-1', 'huang', 's_123', 'nanobot', 'nanobot:cli', 'turn_end',
+                '用户讨论了 nanobot', NULL, '{}', NULL, '2026-05-17T00:00:00Z', NULL
+            );
+            """
+        )
+
+    store = MemoryStore(db_path)
+    store.initialize()
+    results = store.search_events(user_id="huang", query="用户", limit=10)
+
+    assert len(results) == 1
+    assert results[0].id == "event-1"
+
+
+def test_fts_trigram_migration_from_legacy(tmp_path) -> None:
+    db_path = tmp_path / "memory.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE events (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                session_id TEXT,
+                source_type TEXT NOT NULL,
+                source_id TEXT,
+                event_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                metadata_json TEXT,
+                provenance_json TEXT NOT NULL,
+                dedupe_key TEXT,
+                created_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+            CREATE VIRTUAL TABLE events_fts USING fts5(event_id UNINDEXED, content);
+            INSERT INTO events (
+                id, user_id, session_id, source_type, source_id, event_type,
+                content, metadata_json, provenance_json, dedupe_key, created_at, deleted_at
+            ) VALUES (
+                'event-1', 'huang', 's_123', 'nanobot', 'nanobot:cli', 'turn_end',
+                '用户讨论了 nanobot memory service', NULL, '{}', NULL, '2026-05-17T00:00:00Z', NULL
+            );
+            INSERT INTO events_fts(event_id, content)
+            VALUES ('event-1', '用户讨论了 nanobot memory service');
+            """
+        )
+
+    store = MemoryStore(db_path)
+    store.initialize()
+    results = store.search_events(user_id="huang", query="用户", limit=10)
+
+    assert len(results) == 1
+    assert results[0].id == "event-1"
+    with sqlite3.connect(db_path) as conn:
+        sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events_fts'"
+        ).fetchone()[0]
+    assert "trigram" in sql.lower()
+
+
+def test_is_trigram_fts_regex_precision() -> None:
+    assert not _is_trigram_fts(
+        "CREATE VIRTUAL TABLE x USING fts5(trigram_id, content)"
+    )
+    assert _is_trigram_fts(
+        "CREATE VIRTUAL TABLE x USING fts5(id, content, tokenize='trigram')"
+    )
+    assert _is_trigram_fts(
+        'CREATE VIRTUAL TABLE x USING fts5(id, content, tokenize = "trigram")'
+    )
+    assert not _is_trigram_fts("CREATE VIRTUAL TABLE x USING fts5(id, content)")

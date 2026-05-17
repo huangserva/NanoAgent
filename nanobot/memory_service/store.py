@@ -41,6 +41,14 @@ def _json_loads_object(value: str | None) -> dict[str, Any] | None:
 
 
 _FTS_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+_FTS_TRIGRAM_TOKENIZER_RE = re.compile(
+    r"tokenize\s*=\s*['\"]?trigram\b",
+    re.IGNORECASE,
+)
+
+
+def _is_trigram_fts(sql: str) -> bool:
+    return bool(_FTS_TRIGRAM_TOKENIZER_RE.search(sql or ""))
 
 
 def _fts_query_from_user_query(query: str) -> str:
@@ -51,6 +59,11 @@ def _fts_query_from_user_query(query: str) -> str:
 def _fts_or_query_from_user_query(query: str) -> str:
     tokens = [token for token in _FTS_TOKEN_RE.findall(query) if token.strip()]
     return " OR ".join(f'"{token}"' for token in tokens)
+
+
+def _like_pattern_from_user_query(query: str) -> str:
+    escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 class MemoryStore:
@@ -88,9 +101,6 @@ class MemoryStore:
                 CREATE INDEX IF NOT EXISTS idx_events_user_created
                     ON events(user_id, created_at);
 
-                CREATE VIRTUAL TABLE IF NOT EXISTS events_fts
-                    USING fts5(event_id UNINDEXED, content);
-
                 CREATE TABLE IF NOT EXISTS typed_memories (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -118,9 +128,6 @@ class MemoryStore:
                 CREATE INDEX IF NOT EXISTS idx_typed_memories_user_type_updated
                     ON typed_memories(user_id, memory_type, updated_at);
 
-                CREATE VIRTUAL TABLE IF NOT EXISTS typed_memories_fts
-                    USING fts5(memory_id UNINDEXED, text);
-
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
                     job_type TEXT NOT NULL,
@@ -140,6 +147,7 @@ class MemoryStore:
                 """
             )
             self._ensure_typed_memory_lifecycle_columns(conn)
+            self._ensure_fts_trigram_tables(conn)
 
     def _ensure_typed_memory_lifecycle_columns(self, conn: sqlite3.Connection) -> None:
         columns = {
@@ -156,6 +164,52 @@ class MemoryStore:
         for name, statement in additions.items():
             if name not in columns:
                 conn.execute(statement)
+
+    def _ensure_fts_trigram_tables(self, conn: sqlite3.Connection) -> None:
+        self._ensure_fts_trigram_table(
+            conn,
+            table_name="events_fts",
+            create_sql=(
+                "CREATE VIRTUAL TABLE events_fts "
+                "USING fts5(event_id UNINDEXED, content, tokenize='trigram')"
+            ),
+            repopulate_sql=(
+                "INSERT INTO events_fts(event_id, content) "
+                "SELECT id, content FROM events WHERE deleted_at IS NULL"
+            ),
+        )
+        self._ensure_fts_trigram_table(
+            conn,
+            table_name="typed_memories_fts",
+            create_sql=(
+                "CREATE VIRTUAL TABLE typed_memories_fts "
+                "USING fts5(memory_id UNINDEXED, text, tokenize='trigram')"
+            ),
+            repopulate_sql=(
+                "INSERT INTO typed_memories_fts(memory_id, text) "
+                "SELECT id, text FROM typed_memories WHERE deleted_at IS NULL"
+            ),
+        )
+
+    def _ensure_fts_trigram_table(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        table_name: str,
+        create_sql: str,
+        repopulate_sql: str,
+    ) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        sql = str(row["sql"]) if row is not None else ""
+        if row is not None and _is_trigram_fts(sql):
+            return
+        if row is not None:
+            conn.execute(f"DROP TABLE {table_name}")
+        conn.execute(create_sql)
+        conn.execute(repopulate_sql)
 
     def insert_event(self, request: TurnEndRequest) -> EventWriteResult:
         self.initialize()
@@ -256,6 +310,19 @@ class MemoryStore:
                 """,
                 (fts_query, user_id, limit),
             ).fetchall()
+            if not rows:
+                rows = conn.execute(
+                    """
+                    SELECT e.id, e.content, e.event_type, e.source_type, e.created_at
+                    FROM events e
+                    WHERE e.user_id = ?
+                        AND e.content LIKE ? ESCAPE '\\'
+                        AND e.deleted_at IS NULL
+                    ORDER BY e.created_at DESC
+                    LIMIT ?
+                    """,
+                    (user_id, _like_pattern_from_user_query(query), limit),
+                ).fetchall()
         return [
             SearchResult(
                 id=str(row["id"]),
@@ -387,6 +454,17 @@ class MemoryStore:
             ).fetchone()
         return _typed_memory_from_row(row) if row is not None else None
 
+    def get_typed_memory(self, memory_id: str) -> TypedMemoryRecord | None:
+        self.initialize()
+        if not isinstance(memory_id, str) or not memory_id.strip():
+            raise ValueError("memory_id is required")
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM typed_memories WHERE id = ?",
+                (memory_id.strip(),),
+            ).fetchone()
+        return _typed_memory_from_row(row) if row is not None else None
+
     def _revive_typed_memory(
         self,
         memory_id: str,
@@ -466,6 +544,20 @@ class MemoryStore:
                 """,
                 (fts_query, user_id, limit),
             ).fetchall()
+            if not rows:
+                rows = conn.execute(
+                    """
+                    SELECT tm.*
+                    FROM typed_memories tm
+                    WHERE tm.user_id = ?
+                        AND tm.text LIKE ? ESCAPE '\\'
+                        AND tm.status = 'active'
+                        AND tm.deleted_at IS NULL
+                    ORDER BY tm.confidence DESC, tm.updated_at DESC
+                    LIMIT ?
+                    """,
+                    (user_id, _like_pattern_from_user_query(query), limit),
+                ).fetchall()
         return [_typed_memory_from_row(row) for row in rows]
 
     def list_active_typed_memories(
@@ -525,7 +617,7 @@ class MemoryStore:
                     reason,
                     evidence_event_id,
                     superseded_by_id,
-                    now,
+                    now if status == "deleted" else None,
                     now,
                     memory_id,
                 ),
