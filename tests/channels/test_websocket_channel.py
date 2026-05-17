@@ -925,6 +925,17 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
     config.providers.openai.api_key = "secret-key"
     config.tools.web.search.provider = "brave"
     config.tools.web.search.api_key = "brave-secret"
+    config.channels.feishu = {
+        "enabled": False,
+        "appId": "cli_old",
+        "appSecret": "feishu-app-secret",
+        "encryptKey": "feishu-encrypt-key",
+        "verificationToken": "feishu-verify-token",
+        "allowFrom": ["ou_old"],
+        "groupPolicy": "mention",
+        "streaming": True,
+        "domain": "feishu",
+    }
     save_config(config, config_path)
     monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
 
@@ -953,8 +964,19 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         search_providers = {provider["name"]: provider for provider in body["web_search"]["providers"]}
         assert search_providers["duckduckgo"]["credential"] == "none"
         assert search_providers["searxng"]["credential"] == "base_url"
+        assert body["feishu"]["enabled"] is False
+        assert body["feishu"]["appId"] == "cli_old"
+        assert body["feishu"]["allowFrom"] == ["ou_old"]
+        assert body["feishu"]["groupPolicy"] == "mention"
+        assert body["feishu"]["domain"] == "feishu"
+        assert body["feishu"]["appSecretHint"] is not None
+        assert body["feishu"]["encryptKeyHint"] is not None
+        assert body["feishu"]["verificationTokenHint"] is not None
         assert "secret-key" not in settings.text
         assert "brave-secret" not in settings.text
+        assert "feishu-app-secret" not in settings.text
+        assert "feishu-encrypt-key" not in settings.text
+        assert "feishu-verify-token" not in settings.text
 
         provider_updated = await _http_get(
             "http://127.0.0.1:"
@@ -991,6 +1013,27 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert search_body["web_search"]["api_key_hint"] is None
         assert search_body["web_search"]["base_url"] == "https://search.example.com"
 
+        feishu_updated = await _http_get(
+            "http://127.0.0.1:"
+            f"{port}/api/settings/feishu/update?enabled=true&app_id=cli_new"
+            "&app_secret=feishu-new-secret&encrypt_key=feishu-new-encrypt"
+            "&verification_token=feishu-new-verify&allow_from=ou_new&allow_from=*"
+            "&group_policy=open&streaming=false&domain=lark",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert feishu_updated.status_code == 200
+        feishu_body = feishu_updated.json()
+        assert feishu_body["requires_restart"] is True
+        assert feishu_body["feishu"]["enabled"] is True
+        assert feishu_body["feishu"]["appId"] == "cli_new"
+        assert feishu_body["feishu"]["allowFrom"] == ["ou_new", "*"]
+        assert feishu_body["feishu"]["groupPolicy"] == "open"
+        assert feishu_body["feishu"]["streaming"] is False
+        assert feishu_body["feishu"]["domain"] == "lark"
+        assert "feishu-new-secret" not in feishu_updated.text
+        assert "feishu-new-encrypt" not in feishu_updated.text
+        assert "feishu-new-verify" not in feishu_updated.text
+
         saved = load_config(config_path)
         assert saved.agents.defaults.model == "openrouter/test"
         assert saved.agents.defaults.provider == "openrouter"
@@ -999,6 +1042,15 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert saved.tools.web.search.provider == "searxng"
         assert saved.tools.web.search.api_key == ""
         assert saved.tools.web.search.base_url == "https://search.example.com"
+        assert saved.channels.feishu["enabled"] is True
+        assert saved.channels.feishu["appId"] == "cli_new"
+        assert saved.channels.feishu["appSecret"] == "feishu-new-secret"
+        assert saved.channels.feishu["encryptKey"] == "feishu-new-encrypt"
+        assert saved.channels.feishu["verificationToken"] == "feishu-new-verify"
+        assert saved.channels.feishu["allowFrom"] == ["ou_new", "*"]
+        assert saved.channels.feishu["groupPolicy"] == "open"
+        assert saved.channels.feishu["streaming"] is False
+        assert saved.channels.feishu["domain"] == "lark"
     finally:
         await channel.stop()
         await server_task

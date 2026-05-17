@@ -1,29 +1,29 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "HuangServa的管家",
     "loading": {
-      "connecting": "正在連線到 nanobot…",
-      "boot": "正在載入 nanobot…"
+      "connecting": "正在連線到 HuangServa的管家…",
+      "boot": "正在載入 HuangServa的管家…"
     },
     "error": {
-      "title": "無法連線到 nanobot",
+      "title": "無法連線到 HuangServa的管家",
       "gatewayHint": "請確認 gateway 已啟動（`nanobot gateway`），並且目前頁面與 gateway 在同一台機器上開啟。"
     },
     "system": {
       "section": "系統",
-      "restartHint": "重新啟動 nanobot 以套用執行階段變更。",
-      "restart": "重新啟動 nanobot",
+      "restartHint": "重新啟動 HuangServa的管家 以套用執行階段變更。",
+      "restart": "重新啟動 HuangServa的管家",
       "restarting": "正在重新啟動..."
     },
     "restart": {
       "completed": "重新啟動已完成，耗時 {{seconds}} 秒。"
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "HuangServa的管家",
+      "chat": "{{title}} · HuangServa的管家"
     },
     "meta": {
-      "description": "nanobot Web UI —— 與你的 nanobot 工作區對話。"
+      "description": "HuangServa的管家 Web UI —— 與你的 HuangServa的管家 工作區對話。"
     }
   },
   "sidebar": {
@@ -58,14 +58,14 @@
       "language": "語言",
       "provider": "提供者",
       "model": "模型",
-      "restart": "重新啟動 nanobot",
+      "restart": "重新啟動 HuangServa的管家",
       "configPath": "設定檔路徑"
     },
     "help": {
       "theme": "在淺色與深色外觀之間切換。",
       "language": "選擇 WebUI 使用的語言。",
       "provider": "選擇新模型請求使用的服務提供者。",
-      "model": "設定 nanobot 預設使用的模型名稱。",
+      "model": "設定 HuangServa的管家 預設使用的模型名稱。",
       "configPath": "目前閘道正在使用的設定檔。"
     },
     "values": {
@@ -77,7 +77,7 @@
       "loading": "正在載入設定...",
       "loadError": "無法載入設定",
       "unsaved": "有未儲存的變更。",
-      "savedRestart": "已儲存。重新啟動 nanobot 後生效。"
+      "savedRestart": "已儲存。重新啟動 HuangServa的管家 後生效。"
     },
     "actions": {
       "save": "儲存",
@@ -86,7 +86,7 @@
       "cancel": "取消"
     },
     "byok": {
-      "description": "自帶 provider key。Nanobot 會從目前 config 讀取這些值，只有已設定的 provider 才能在一般設定中選擇。",
+      "description": "自帶 provider key。HuangServa的管家 會從目前 config 讀取這些值，只有已設定的 provider 才能在一般設定中選擇。",
       "configured": "已設定",
       "notConfigured": "未設定",
       "configuredSection": "已設定",
@@ -184,7 +184,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "設計應用程式圖示",
-          "prompt": "生成一個乾淨的 1:1 nanobot 應用程式圖示：友善的機器人、簡潔向量風格、柔和藍白配色，不要文字。"
+          "prompt": "生成一個乾淨的 1:1 HuangServa的管家 應用程式圖示：友善的機器人、簡潔向量風格、柔和藍白配色，不要文字。"
         },
         "sticker": {
           "title": "製作貼圖",
@@ -270,7 +270,7 @@
             "description": "取消這個對話中正在執行的 agent 回合。"
           },
           "restart": {
-            "title": "重新啟動 nanobot",
+            "title": "重新啟動 HuangServa的管家",
             "description": "原地重新啟動 bot 進程。"
           },
           "status": {

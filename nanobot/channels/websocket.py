@@ -243,6 +243,112 @@ _WEB_SEARCH_PROVIDER_BY_NAME = {
     provider["name"]: provider for provider in _WEB_SEARCH_PROVIDER_OPTIONS
 }
 
+_FEISHU_SETTINGS_DEFAULTS: dict[str, Any] = {
+    "enabled": False,
+    "appId": "",
+    "appSecret": "",
+    "encryptKey": "",
+    "verificationToken": "",
+    "allowFrom": [],
+    "groupPolicy": "mention",
+    "streaming": True,
+    "domain": "feishu",
+}
+
+_FEISHU_FIELD_ALIASES: dict[str, tuple[str, str]] = {
+    "appId": ("appId", "app_id"),
+    "appSecret": ("appSecret", "app_secret"),
+    "encryptKey": ("encryptKey", "encrypt_key"),
+    "verificationToken": ("verificationToken", "verification_token"),
+    "allowFrom": ("allowFrom", "allow_from"),
+    "groupPolicy": ("groupPolicy", "group_policy"),
+}
+
+
+def _coerce_str_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _coerce_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _parse_bool_param(value: str | None, *, field: str) -> bool | str | None:
+    if value is None:
+        return None
+    lowered = value.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    return f"{field} must be a boolean"
+
+
+def _get_channel_extra(channels: Any, name: str) -> dict[str, Any]:
+    raw = getattr(channels, name, None)
+    if isinstance(raw, dict):
+        return dict(raw)
+    if hasattr(raw, "model_dump"):
+        dumped = raw.model_dump(mode="json", by_alias=True)
+        return dumped if isinstance(dumped, dict) else {}
+    return {}
+
+
+def _get_feishu_value(data: dict[str, Any], field: str) -> Any:
+    aliases = _FEISHU_FIELD_ALIASES.get(field)
+    if aliases:
+        camel, snake = aliases
+        if camel in data:
+            return data[camel]
+        if snake in data:
+            return data[snake]
+    return data.get(field, _FEISHU_SETTINGS_DEFAULTS[field])
+
+
+def _normalized_feishu_settings(data: dict[str, Any]) -> dict[str, Any]:
+    group_policy = str(_get_feishu_value(data, "groupPolicy") or "mention").strip()
+    if group_policy not in {"open", "mention"}:
+        group_policy = "mention"
+    domain = str(_get_feishu_value(data, "domain") or "feishu").strip()
+    if domain not in {"feishu", "lark"}:
+        domain = "feishu"
+    return {
+        "enabled": _coerce_bool(_get_feishu_value(data, "enabled"), False),
+        "appId": str(_get_feishu_value(data, "appId") or ""),
+        "appSecret": str(_get_feishu_value(data, "appSecret") or ""),
+        "encryptKey": str(_get_feishu_value(data, "encryptKey") or ""),
+        "verificationToken": str(_get_feishu_value(data, "verificationToken") or ""),
+        "allowFrom": _coerce_str_list(_get_feishu_value(data, "allowFrom")),
+        "groupPolicy": group_policy,
+        "streaming": _coerce_bool(_get_feishu_value(data, "streaming"), True),
+        "domain": domain,
+    }
+
+
+def _feishu_settings_payload(data: dict[str, Any]) -> dict[str, Any]:
+    settings = _normalized_feishu_settings(data)
+    return {
+        "enabled": settings["enabled"],
+        "appId": settings["appId"],
+        "appSecretHint": _mask_secret_hint(settings["appSecret"]),
+        "encryptKeyHint": _mask_secret_hint(settings["encryptKey"]),
+        "verificationTokenHint": _mask_secret_hint(settings["verificationToken"]),
+        "allowFrom": settings["allowFrom"],
+        "groupPolicy": settings["groupPolicy"],
+        "streaming": settings["streaming"],
+        "domain": settings["domain"],
+    }
+
 
 def _parse_inbound_payload(raw: str) -> str | None:
     """Parse a client frame into text; return None for empty or unrecognized content."""
@@ -653,6 +759,9 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/settings/web-search/update":
             return self._handle_settings_web_search_update(request)
 
+        if got == "/api/settings/feishu/update":
+            return self._handle_settings_feishu_update(request)
+
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
@@ -804,6 +913,7 @@ class WebSocketChannel(BaseChannel):
             if search_config.provider in _WEB_SEARCH_PROVIDER_BY_NAME
             else "duckduckgo"
         )
+        feishu_config = _get_channel_extra(config.channels, "feishu")
         return {
             "agent": {
                 "model": defaults.model,
@@ -818,6 +928,7 @@ class WebSocketChannel(BaseChannel):
                 "base_url": search_config.base_url or None,
                 "providers": list(_WEB_SEARCH_PROVIDER_OPTIONS),
             },
+            "feishu": _feishu_settings_payload(feishu_config),
             "runtime": {
                 "config_path": str(get_config_path().expanduser()),
             },
@@ -973,6 +1084,95 @@ class WebSocketChannel(BaseChannel):
         if changed:
             save_config(config)
         return _http_json_response(self._settings_payload(requires_restart=False))
+
+    def _handle_settings_feishu_update(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from nanobot.config.loader import load_config, save_config
+
+        query = _parse_query(request.path)
+        config = load_config()
+        feishu_config = _get_channel_extra(config.channels, "feishu")
+        changed = False
+
+        def query_first(*keys: str) -> str | None:
+            for key in keys:
+                value = _query_first(query, key)
+                if value is not None:
+                    return value
+            return None
+
+        def query_values(*keys: str) -> list[str] | None:
+            for key in keys:
+                if key in query:
+                    return query[key]
+            return None
+
+        def set_value(camel: str, value: Any) -> None:
+            nonlocal changed
+            snake = _FEISHU_FIELD_ALIASES.get(camel, (camel, camel))[1]
+            current = _get_feishu_value(feishu_config, camel)
+            if current != value or (snake != camel and snake in feishu_config):
+                feishu_config[camel] = value
+                if snake != camel:
+                    feishu_config.pop(snake, None)
+                changed = True
+
+        enabled = _parse_bool_param(query_first("enabled"), field="enabled")
+        if isinstance(enabled, str):
+            return _http_error(400, enabled)
+        if enabled is not None:
+            set_value("enabled", enabled)
+
+        streaming = _parse_bool_param(query_first("streaming"), field="streaming")
+        if isinstance(streaming, str):
+            return _http_error(400, streaming)
+        if streaming is not None:
+            set_value("streaming", streaming)
+
+        app_id = query_first("app_id", "appId")
+        if app_id is not None:
+            set_value("appId", app_id.strip())
+
+        app_secret = query_first("app_secret", "appSecret")
+        if app_secret is not None:
+            set_value("appSecret", app_secret.strip())
+
+        encrypt_key = query_first("encrypt_key", "encryptKey")
+        if encrypt_key is not None:
+            set_value("encryptKey", encrypt_key.strip())
+
+        verification_token = query_first("verification_token", "verificationToken")
+        if verification_token is not None:
+            set_value("verificationToken", verification_token.strip())
+
+        allow_from_values = query_values("allow_from", "allowFrom")
+        if allow_from_values is not None:
+            allow_from: list[str] = []
+            for raw in allow_from_values:
+                allow_from.extend(
+                    item.strip() for item in raw.splitlines() if item.strip()
+                )
+            set_value("allowFrom", allow_from)
+
+        group_policy = query_first("group_policy", "groupPolicy")
+        if group_policy is not None:
+            group_policy = group_policy.strip()
+            if group_policy not in {"open", "mention"}:
+                return _http_error(400, "group_policy must be open or mention")
+            set_value("groupPolicy", group_policy)
+
+        domain = query_first("domain")
+        if domain is not None:
+            domain = domain.strip()
+            if domain not in {"feishu", "lark"}:
+                return _http_error(400, "domain must be feishu or lark")
+            set_value("domain", domain)
+
+        if changed:
+            setattr(config.channels, "feishu", feishu_config)
+            save_config(config)
+        return _http_json_response(self._settings_payload(requires_restart=changed))
 
     @staticmethod
     def _is_websocket_channel_session_key(key: str) -> bool:

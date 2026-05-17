@@ -1,29 +1,29 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "HuangServa的管家",
     "loading": {
-      "connecting": "Menghubungkan ke nanobot…",
-      "boot": "Memuat nanobot…"
+      "connecting": "Menghubungkan ke HuangServa的管家…",
+      "boot": "Memuat HuangServa的管家…"
     },
     "error": {
-      "title": "Tidak dapat menjangkau nanobot",
+      "title": "Tidak dapat menjangkau HuangServa的管家",
       "gatewayHint": "Pastikan gateway sedang berjalan (`nanobot gateway`) dan halaman ini dibuka pada mesin yang sama."
     },
     "system": {
       "section": "Sistem",
-      "restartHint": "Mulai ulang nanobot untuk menerapkan perubahan runtime.",
-      "restart": "Mulai ulang nanobot",
+      "restartHint": "Mulai ulang HuangServa的管家 untuk menerapkan perubahan runtime.",
+      "restart": "Mulai ulang HuangServa的管家",
       "restarting": "Memulai ulang..."
     },
     "restart": {
       "completed": "Mulai ulang selesai dalam {{seconds}} dtk."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "HuangServa的管家",
+      "chat": "{{title}} · HuangServa的管家"
     },
     "meta": {
-      "description": "UI web nanobot — ngobrol dengan workspace nanobot Anda."
+      "description": "UI web HuangServa的管家 — ngobrol dengan workspace HuangServa的管家 Anda."
     }
   },
   "sidebar": {
@@ -58,14 +58,14 @@
       "language": "Bahasa",
       "provider": "Penyedia",
       "model": "Model",
-      "restart": "Mulai ulang nanobot",
+      "restart": "Mulai ulang HuangServa的管家",
       "configPath": "Path konfigurasi"
     },
     "help": {
       "theme": "Beralih antara tampilan terang dan gelap.",
       "language": "Pilih bahasa yang digunakan WebUI.",
       "provider": "Pilih penyedia untuk permintaan model baru.",
-      "model": "Atur nama model default yang digunakan nanobot.",
+      "model": "Atur nama model default yang digunakan HuangServa的管家.",
       "configPath": "File konfigurasi gateway yang sedang digunakan."
     },
     "values": {
@@ -77,7 +77,7 @@
       "loading": "Memuat pengaturan...",
       "loadError": "Tidak dapat memuat pengaturan",
       "unsaved": "Ada perubahan yang belum disimpan.",
-      "savedRestart": "Tersimpan. Mulai ulang nanobot untuk menerapkan."
+      "savedRestart": "Tersimpan. Mulai ulang HuangServa的管家 untuk menerapkan."
     },
     "actions": {
       "save": "Simpan",
@@ -86,7 +86,7 @@
       "cancel": "Batal"
     },
     "byok": {
-      "description": "Gunakan kunci provider Anda sendiri. Nanobot membaca nilai ini dari config saat ini, dan hanya provider yang sudah dikonfigurasi yang bisa dipilih di Umum.",
+      "description": "Gunakan kunci provider Anda sendiri. HuangServa的管家 membaca nilai ini dari config saat ini, dan hanya provider yang sudah dikonfigurasi yang bisa dipilih di Umum.",
       "configured": "Terkonfigurasi",
       "notConfigured": "Belum dikonfigurasi",
       "configuredSection": "Terkonfigurasi",
@@ -184,7 +184,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "Desain ikon aplikasi",
-          "prompt": "Buat ikon aplikasi 1:1 yang bersih untuk nanobot: robot ramah, gaya vektor sederhana, palet biru dan putih lembut, tanpa teks."
+          "prompt": "Buat ikon aplikasi 1:1 yang bersih untuk HuangServa的管家: robot ramah, gaya vektor sederhana, palet biru dan putih lembut, tanpa teks."
         },
         "sticker": {
           "title": "Buat stiker",
@@ -270,7 +270,7 @@
             "description": "Batalkan giliran agent yang sedang aktif di chat ini."
           },
           "restart": {
-            "title": "Mulai ulang nanobot",
+            "title": "Mulai ulang HuangServa的管家",
             "description": "Mulai ulang proses bot di tempat."
           },
           "status": {

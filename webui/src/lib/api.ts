@@ -1,5 +1,6 @@
 import type {
   ChatSummary,
+  FeishuSettingsUpdate,
   ProviderSettingsUpdate,
   SettingsPayload,
   SettingsUpdate,
@@ -162,6 +163,35 @@ export async function updateWebSearchSettings(
   if (update.baseUrl !== undefined) query.set("base_url", update.baseUrl);
   return request<SettingsPayload>(
     `${base}/api/settings/web-search/update?${query}`,
+    token,
+  );
+}
+
+export async function updateFeishuSettings(
+  token: string,
+  update: FeishuSettingsUpdate,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  if (update.enabled !== undefined) query.set("enabled", String(update.enabled));
+  if (update.appId !== undefined) query.set("app_id", update.appId);
+  if (update.appSecret !== undefined) query.set("app_secret", update.appSecret);
+  if (update.encryptKey !== undefined) query.set("encrypt_key", update.encryptKey);
+  if (update.verificationToken !== undefined) {
+    query.set("verification_token", update.verificationToken);
+  }
+  if (update.allowFrom !== undefined) {
+    if (update.allowFrom.length === 0) {
+      query.append("allow_from", "");
+    } else {
+      for (const value of update.allowFrom) query.append("allow_from", value);
+    }
+  }
+  if (update.groupPolicy !== undefined) query.set("group_policy", update.groupPolicy);
+  if (update.streaming !== undefined) query.set("streaming", String(update.streaming));
+  if (update.domain !== undefined) query.set("domain", update.domain);
+  return request<SettingsPayload>(
+    `${base}/api/settings/feishu/update?${query}`,
     token,
   );
 }

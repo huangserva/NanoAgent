@@ -1,29 +1,29 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "HuangServa的管家",
     "loading": {
-      "connecting": "nanobot에 연결 중…",
-      "boot": "nanobot 불러오는 중…"
+      "connecting": "HuangServa的管家에 연결 중…",
+      "boot": "HuangServa的管家 불러오는 중…"
     },
     "error": {
-      "title": "nanobot에 연결할 수 없습니다",
+      "title": "HuangServa的管家에 연결할 수 없습니다",
       "gatewayHint": "gateway(`nanobot gateway`)가 실행 중인지, 그리고 이 페이지가 같은 머신에서 열려 있는지 확인하세요."
     },
     "system": {
       "section": "시스템",
-      "restartHint": "런타임 변경 사항을 적용하려면 nanobot을 다시 시작하세요.",
-      "restart": "nanobot 다시 시작",
+      "restartHint": "런타임 변경 사항을 적용하려면 HuangServa的管家을 다시 시작하세요.",
+      "restart": "HuangServa的管家 다시 시작",
       "restarting": "다시 시작 중..."
     },
     "restart": {
       "completed": "{{seconds}}초 만에 다시 시작되었습니다."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "HuangServa的管家",
+      "chat": "{{title}} · HuangServa的管家"
     },
     "meta": {
-      "description": "nanobot 웹 UI — nanobot 작업공간과 대화하세요."
+      "description": "HuangServa的管家 웹 UI — HuangServa的管家 작업공간과 대화하세요."
     }
   },
   "sidebar": {
@@ -58,14 +58,14 @@
       "language": "언어",
       "provider": "제공자",
       "model": "모델",
-      "restart": "nanobot 재시작",
+      "restart": "HuangServa的管家 재시작",
       "configPath": "설정 경로"
     },
     "help": {
       "theme": "밝은 모드와 어두운 모드를 전환합니다.",
       "language": "WebUI에서 사용할 언어를 선택합니다.",
       "provider": "새 모델 요청에 사용할 제공자를 선택합니다.",
-      "model": "nanobot이 기본으로 사용할 모델 이름을 설정합니다.",
+      "model": "HuangServa的管家이 기본으로 사용할 모델 이름을 설정합니다.",
       "configPath": "현재 게이트웨이가 사용하는 설정 파일입니다."
     },
     "values": {
@@ -77,7 +77,7 @@
       "loading": "설정을 불러오는 중...",
       "loadError": "설정을 불러올 수 없습니다",
       "unsaved": "저장되지 않은 변경 사항이 있습니다.",
-      "savedRestart": "저장되었습니다. 적용하려면 nanobot을 재시작하세요."
+      "savedRestart": "저장되었습니다. 적용하려면 HuangServa的管家을 재시작하세요."
     },
     "actions": {
       "save": "저장",
@@ -86,7 +86,7 @@
       "cancel": "취소"
     },
     "byok": {
-      "description": "직접 provider 키를 가져옵니다. Nanobot은 현재 config에서 값을 읽고, 설정된 provider만 일반 설정에서 선택할 수 있습니다.",
+      "description": "직접 provider 키를 가져옵니다. HuangServa的管家은 현재 config에서 값을 읽고, 설정된 provider만 일반 설정에서 선택할 수 있습니다.",
       "configured": "설정됨",
       "notConfigured": "설정 안 됨",
       "configuredSection": "설정됨",
@@ -184,7 +184,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "앱 아이콘 디자인",
-          "prompt": "nanobot을 위한 깔끔한 1:1 앱 아이콘을 생성해 주세요. 친근한 로봇, 단순한 벡터 스타일, 부드러운 파란색과 흰색 팔레트, 텍스트 없음."
+          "prompt": "HuangServa的管家을 위한 깔끔한 1:1 앱 아이콘을 생성해 주세요. 친근한 로봇, 단순한 벡터 스타일, 부드러운 파란색과 흰색 팔레트, 텍스트 없음."
         },
         "sticker": {
           "title": "스티커 만들기",
@@ -270,7 +270,7 @@
             "description": "이 채팅에서 실행 중인 agent 턴을 취소합니다."
           },
           "restart": {
-            "title": "nanobot 재시작",
+            "title": "HuangServa的管家 재시작",
             "description": "bot 프로세스를 제자리에서 재시작합니다."
           },
           "status": {

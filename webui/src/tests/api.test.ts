@@ -5,6 +5,7 @@ import {
   fetchWebuiThread,
   listSessions,
   listSlashCommands,
+  updateFeishuSettings,
   updateProviderSettings,
   updateSettings,
   updateWebSearchSettings,
@@ -81,6 +82,27 @@ describe("webui API helpers", () => {
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/settings/web-search/update?provider=searxng&base_url=https%3A%2F%2Fsearch.example.com",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("serializes feishu settings updates", async () => {
+    await updateFeishuSettings("tok", {
+      enabled: true,
+      appId: "cli_test",
+      appSecret: "app-secret",
+      encryptKey: "encrypt-secret",
+      verificationToken: "verify-token",
+      allowFrom: ["ou_1", "*"],
+      groupPolicy: "open",
+      streaming: false,
+      domain: "lark",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/settings/feishu/update?enabled=true&app_id=cli_test&app_secret=app-secret&encrypt_key=encrypt-secret&verification_token=verify-token&allow_from=ou_1&allow_from=*&group_policy=open&streaming=false&domain=lark",
       expect.objectContaining({
         headers: { Authorization: "Bearer tok" },
       }),

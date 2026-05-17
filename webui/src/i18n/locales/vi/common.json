@@ -1,29 +1,29 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "HuangServa的管家",
     "loading": {
-      "connecting": "Đang kết nối tới nanobot…",
-      "boot": "Đang tải nanobot…"
+      "connecting": "Đang kết nối tới HuangServa的管家…",
+      "boot": "Đang tải HuangServa的管家…"
     },
     "error": {
-      "title": "Không thể kết nối tới nanobot",
+      "title": "Không thể kết nối tới HuangServa的管家",
       "gatewayHint": "Hãy chắc chắn gateway đang chạy (`nanobot gateway`) và trang này được mở trên cùng máy."
     },
     "system": {
       "section": "Hệ thống",
-      "restartHint": "Khởi động lại nanobot để áp dụng thay đổi runtime.",
-      "restart": "Khởi động lại nanobot",
+      "restartHint": "Khởi động lại HuangServa的管家 để áp dụng thay đổi runtime.",
+      "restart": "Khởi động lại HuangServa的管家",
       "restarting": "Đang khởi động lại..."
     },
     "restart": {
       "completed": "Khởi động lại hoàn tất sau {{seconds}} giây."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "HuangServa的管家",
+      "chat": "{{title}} · HuangServa的管家"
     },
     "meta": {
-      "description": "Giao diện web nanobot — trò chuyện với workspace nanobot của bạn."
+      "description": "Giao diện web HuangServa的管家 — trò chuyện với workspace HuangServa的管家 của bạn."
     }
   },
   "sidebar": {
@@ -58,14 +58,14 @@
       "language": "Ngôn ngữ",
       "provider": "Nhà cung cấp",
       "model": "Mô hình",
-      "restart": "Khởi động lại nanobot",
+      "restart": "Khởi động lại HuangServa的管家",
       "configPath": "Đường dẫn cấu hình"
     },
     "help": {
       "theme": "Chuyển giữa giao diện sáng và tối.",
       "language": "Chọn ngôn ngữ dùng trong WebUI.",
       "provider": "Chọn nhà cung cấp cho các yêu cầu mô hình mới.",
-      "model": "Đặt tên mô hình mặc định mà nanobot sử dụng.",
+      "model": "Đặt tên mô hình mặc định mà HuangServa的管家 sử dụng.",
       "configPath": "Tệp cấu hình gateway hiện đang dùng."
     },
     "values": {
@@ -77,7 +77,7 @@
       "loading": "Đang tải cài đặt...",
       "loadError": "Không thể tải cài đặt",
       "unsaved": "Có thay đổi chưa lưu.",
-      "savedRestart": "Đã lưu. Khởi động lại nanobot để áp dụng."
+      "savedRestart": "Đã lưu. Khởi động lại HuangServa的管家 để áp dụng."
     },
     "actions": {
       "save": "Lưu",
@@ -86,7 +86,7 @@
       "cancel": "Hủy"
     },
     "byok": {
-      "description": "Dùng key provider của riêng bạn. Nanobot đọc các giá trị này từ config hiện tại, và chỉ provider đã cấu hình mới có thể chọn trong Chung.",
+      "description": "Dùng key provider của riêng bạn. HuangServa的管家 đọc các giá trị này từ config hiện tại, và chỉ provider đã cấu hình mới có thể chọn trong Chung.",
       "configured": "Đã cấu hình",
       "notConfigured": "Chưa cấu hình",
       "configuredSection": "Đã cấu hình",
@@ -184,7 +184,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "Thiết kế biểu tượng app",
-          "prompt": "Tạo một biểu tượng ứng dụng 1:1 gọn gàng cho nanobot: robot thân thiện, phong cách vector đơn giản, bảng màu xanh trắng dịu, không có chữ."
+          "prompt": "Tạo một biểu tượng ứng dụng 1:1 gọn gàng cho HuangServa的管家: robot thân thiện, phong cách vector đơn giản, bảng màu xanh trắng dịu, không có chữ."
         },
         "sticker": {
           "title": "Tạo sticker",
@@ -270,7 +270,7 @@
             "description": "Hủy lượt agent đang chạy trong cuộc trò chuyện này."
           },
           "restart": {
-            "title": "Khởi động lại nanobot",
+            "title": "Khởi động lại HuangServa的管家",
             "description": "Khởi động lại tiến trình bot tại chỗ."
           },
           "status": {

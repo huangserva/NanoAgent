@@ -1,29 +1,29 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "HuangServa的管家",
     "loading": {
-      "connecting": "nanobot に接続中…",
-      "boot": "nanobot を読み込み中…"
+      "connecting": "HuangServa的管家 に接続中…",
+      "boot": "HuangServa的管家 を読み込み中…"
     },
     "error": {
-      "title": "nanobot に接続できませんでした",
+      "title": "HuangServa的管家 に接続できませんでした",
       "gatewayHint": "gateway（`nanobot gateway`）が起動しており、このページが同じマシン上で開かれていることを確認してください。"
     },
     "system": {
       "section": "システム",
-      "restartHint": "実行時の変更を適用するには nanobot を再起動します。",
-      "restart": "nanobot を再起動",
+      "restartHint": "実行時の変更を適用するには HuangServa的管家 を再起動します。",
+      "restart": "HuangServa的管家 を再起動",
       "restarting": "再起動中..."
     },
     "restart": {
       "completed": "{{seconds}} 秒で再起動が完了しました。"
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "HuangServa的管家",
+      "chat": "{{title}} · HuangServa的管家"
     },
     "meta": {
-      "description": "nanobot Web UI — nanobot ワークスペースと会話します。"
+      "description": "HuangServa的管家 Web UI — HuangServa的管家 ワークスペースと会話します。"
     }
   },
   "sidebar": {
@@ -58,14 +58,14 @@
       "language": "言語",
       "provider": "プロバイダー",
       "model": "モデル",
-      "restart": "nanobot を再起動",
+      "restart": "HuangServa的管家 を再起動",
       "configPath": "設定パス"
     },
     "help": {
       "theme": "ライト表示とダーク表示を切り替えます。",
       "language": "WebUI で使用する言語を選択します。",
       "provider": "新しいモデルリクエストに使うプロバイダーを選択します。",
-      "model": "nanobot が既定で使用するモデル名を設定します。",
+      "model": "HuangServa的管家 が既定で使用するモデル名を設定します。",
       "configPath": "現在ゲートウェイが使用している設定ファイルです。"
     },
     "values": {
@@ -77,7 +77,7 @@
       "loading": "設定を読み込んでいます...",
       "loadError": "設定を読み込めませんでした",
       "unsaved": "未保存の変更があります。",
-      "savedRestart": "保存しました。反映するには nanobot を再起動してください。"
+      "savedRestart": "保存しました。反映するには HuangServa的管家 を再起動してください。"
     },
     "actions": {
       "save": "保存",
@@ -86,7 +86,7 @@
       "cancel": "キャンセル"
     },
     "byok": {
-      "description": "自分の provider キーを使います。Nanobot は現在の config から値を読み込み、設定済みの provider だけを一般設定で選択できます。",
+      "description": "自分の provider キーを使います。HuangServa的管家 は現在の config から値を読み込み、設定済みの provider だけを一般設定で選択できます。",
       "configured": "設定済み",
       "notConfigured": "未設定",
       "configuredSection": "設定済み",
@@ -184,7 +184,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "アプリアイコンを作る",
-          "prompt": "nanobot のクリーンな 1:1 アプリアイコンを生成してください。親しみやすいロボット、シンプルなベクター風、柔らかい青と白の配色、文字なし。"
+          "prompt": "HuangServa的管家 のクリーンな 1:1 アプリアイコンを生成してください。親しみやすいロボット、シンプルなベクター風、柔らかい青と白の配色、文字なし。"
         },
         "sticker": {
           "title": "ステッカーを作る",
@@ -270,7 +270,7 @@
             "description": "このチャットで実行中の agent ターンをキャンセルします。"
           },
           "restart": {
-            "title": "nanobot を再起動",
+            "title": "HuangServa的管家 を再起動",
             "description": "bot プロセスをその場で再起動します。"
           },
           "status": {

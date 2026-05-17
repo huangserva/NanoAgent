@@ -124,6 +124,7 @@ export interface SettingsPayload {
       credential: "none" | "api_key" | "base_url";
     }>;
   };
+  feishu: FeishuSettings;
   runtime: {
     config_path: string;
   };
@@ -145,6 +146,30 @@ export interface WebSearchSettingsUpdate {
   provider: string;
   apiKey?: string;
   baseUrl?: string;
+}
+
+export interface FeishuSettings {
+  enabled: boolean;
+  appId: string;
+  appSecretHint?: string | null;
+  encryptKeyHint?: string | null;
+  verificationTokenHint?: string | null;
+  allowFrom: string[];
+  groupPolicy: "open" | "mention";
+  streaming: boolean;
+  domain: "feishu" | "lark";
+}
+
+export interface FeishuSettingsUpdate {
+  enabled?: boolean;
+  appId?: string;
+  appSecret?: string;
+  encryptKey?: string;
+  verificationToken?: string;
+  allowFrom?: string[];
+  groupPolicy?: "open" | "mention";
+  streaming?: boolean;
+  domain?: "feishu" | "lark";
 }
 
 export interface SlashCommand {

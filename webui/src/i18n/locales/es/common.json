@@ -1,29 +1,29 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "HuangServa的管家",
     "loading": {
-      "connecting": "Conectando con nanobot…",
-      "boot": "Cargando nanobot…"
+      "connecting": "Conectando con HuangServa的管家…",
+      "boot": "Cargando HuangServa的管家…"
     },
     "error": {
-      "title": "No se pudo conectar con nanobot",
+      "title": "No se pudo conectar con HuangServa的管家",
       "gatewayHint": "Asegúrate de que la gateway esté en ejecución (`nanobot gateway`) y de que esta página esté abierta en la misma máquina."
     },
     "system": {
       "section": "Sistema",
-      "restartHint": "Reinicia nanobot para aplicar los cambios de ejecución.",
-      "restart": "Reiniciar nanobot",
+      "restartHint": "Reinicia HuangServa的管家 para aplicar los cambios de ejecución.",
+      "restart": "Reiniciar HuangServa的管家",
       "restarting": "Reiniciando..."
     },
     "restart": {
       "completed": "Reinicio completado en {{seconds}} s."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "HuangServa的管家",
+      "chat": "{{title}} · HuangServa的管家"
     },
     "meta": {
-      "description": "Interfaz web de nanobot: conversa con tu espacio de trabajo de nanobot."
+      "description": "Interfaz web de HuangServa的管家: conversa con tu espacio de trabajo de HuangServa的管家."
     }
   },
   "sidebar": {
@@ -58,14 +58,14 @@
       "language": "Idioma",
       "provider": "Proveedor",
       "model": "Modelo",
-      "restart": "Reiniciar nanobot",
+      "restart": "Reiniciar HuangServa的管家",
       "configPath": "Ruta de configuración"
     },
     "help": {
       "theme": "Cambia entre apariencia clara y oscura.",
       "language": "Elige el idioma usado por la WebUI.",
       "provider": "Selecciona el proveedor para nuevas solicitudes de modelo.",
-      "model": "Define el nombre del modelo predeterminado que usa nanobot.",
+      "model": "Define el nombre del modelo predeterminado que usa HuangServa的管家.",
       "configPath": "El archivo de configuración que usa actualmente el gateway."
     },
     "values": {
@@ -77,7 +77,7 @@
       "loading": "Cargando configuración...",
       "loadError": "No se pudo cargar la configuración",
       "unsaved": "Hay cambios sin guardar.",
-      "savedRestart": "Guardado. Reinicia nanobot para aplicar."
+      "savedRestart": "Guardado. Reinicia HuangServa的管家 para aplicar."
     },
     "actions": {
       "save": "Guardar",
@@ -86,7 +86,7 @@
       "cancel": "Cancelar"
     },
     "byok": {
-      "description": "Usa tus propias claves de proveedor. Nanobot lee estos valores desde la configuración actual, y solo los proveedores configurados se pueden elegir en General.",
+      "description": "Usa tus propias claves de proveedor. HuangServa的管家 lee estos valores desde la configuración actual, y solo los proveedores configurados se pueden elegir en General.",
       "configured": "Configurado",
       "notConfigured": "Sin configurar",
       "configuredSection": "Configurados",
@@ -184,7 +184,7 @@
       "imageQuickActions": {
         "icon": {
           "title": "Diseñar un icono de app",
-          "prompt": "Genera un icono de app 1:1 limpio para nanobot: robot amigable, estilo vectorial simple, paleta suave azul y blanca, sin texto."
+          "prompt": "Genera un icono de app 1:1 limpio para HuangServa的管家: robot amigable, estilo vectorial simple, paleta suave azul y blanca, sin texto."
         },
         "sticker": {
           "title": "Crear un sticker",
@@ -270,7 +270,7 @@
             "description": "Cancela el turno activo del agent en este chat."
           },
           "restart": {
-            "title": "Reiniciar nanobot",
+            "title": "Reiniciar HuangServa的管家",
             "description": "Reinicia el proceso del bot en el mismo lugar."
           },
           "status": {

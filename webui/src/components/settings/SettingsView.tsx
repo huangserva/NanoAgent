@@ -18,6 +18,7 @@ import {
   LogOut,
   KeyRound,
   Layers,
+  MessageCircle,
   Moon,
   Orbit,
   RotateCcw,
@@ -41,16 +42,102 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   fetchSettings,
+  updateFeishuSettings,
   updateProviderSettings,
   updateSettings,
   updateWebSearchSettings,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
-import type { SettingsPayload, WebSearchSettingsUpdate } from "@/lib/types";
+import type {
+  FeishuSettings,
+  FeishuSettingsUpdate,
+  SettingsPayload,
+  WebSearchSettingsUpdate,
+} from "@/lib/types";
 
-type SettingsSectionKey = "general" | "byok";
+type SettingsSectionKey = "general" | "byok" | "feishu";
 type ByokPaneKey = "llm" | "web-search";
+type FeishuSecretKey = "appSecret" | "encryptKey" | "verificationToken";
+
+interface FeishuForm {
+  enabled: boolean;
+  appId: string;
+  appSecret: string;
+  encryptKey: string;
+  verificationToken: string;
+  allowFromText: string;
+  groupPolicy: "open" | "mention";
+  streaming: boolean;
+  domain: "feishu" | "lark";
+}
+
+const DEFAULT_FEISHU_SETTINGS: FeishuSettings = {
+  enabled: false,
+  appId: "",
+  appSecretHint: null,
+  encryptKeyHint: null,
+  verificationTokenHint: null,
+  allowFrom: [],
+  groupPolicy: "mention",
+  streaming: true,
+  domain: "feishu",
+};
+
+const FEISHU_SECRET_FIELDS: Array<{
+  key: FeishuSecretKey;
+  hintKey: keyof Pick<FeishuSettings, "appSecretHint" | "encryptKeyHint" | "verificationTokenHint">;
+  label: string;
+  description: string;
+  placeholder: string;
+}> = [
+  {
+    key: "appSecret",
+    hintKey: "appSecretHint",
+    label: "App Secret",
+    description: "Used by Feishu/Lark long-connection auth.",
+    placeholder: "Enter a new app secret",
+  },
+  {
+    key: "encryptKey",
+    hintKey: "encryptKeyHint",
+    label: "Encrypt Key",
+    description: "Optional event encryption key.",
+    placeholder: "Enter a new encrypt key",
+  },
+  {
+    key: "verificationToken",
+    hintKey: "verificationTokenHint",
+    label: "Verification Token",
+    description: "Optional event verification token.",
+    placeholder: "Enter a new verification token",
+  },
+];
+
+function getFeishuSettings(settings: SettingsPayload): FeishuSettings {
+  return settings.feishu ?? DEFAULT_FEISHU_SETTINGS;
+}
+
+function feishuSettingsToForm(settings: FeishuSettings): FeishuForm {
+  return {
+    enabled: settings.enabled,
+    appId: settings.appId,
+    appSecret: "",
+    encryptKey: "",
+    verificationToken: "",
+    allowFromText: settings.allowFrom.join("\n"),
+    groupPolicy: settings.groupPolicy,
+    streaming: settings.streaming,
+    domain: settings.domain,
+  };
+}
+
+function parseAllowFrom(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 interface SettingsViewProps {
   theme: "light" | "dark";
@@ -78,6 +165,7 @@ export function SettingsView({
   const [saving, setSaving] = useState(false);
   const [providerSaving, setProviderSaving] = useState<string | null>(null);
   const [webSearchSaving, setWebSearchSaving] = useState(false);
+  const [feishuSaving, setFeishuSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>("general");
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
@@ -91,6 +179,19 @@ export function SettingsView({
   });
   const [webSearchKeyVisible, setWebSearchKeyVisible] = useState(false);
   const [webSearchKeyEditing, setWebSearchKeyEditing] = useState(false);
+  const [feishuForm, setFeishuForm] = useState<FeishuForm>(
+    feishuSettingsToForm(DEFAULT_FEISHU_SETTINGS),
+  );
+  const [visibleFeishuSecrets, setVisibleFeishuSecrets] = useState<Record<FeishuSecretKey, boolean>>({
+    appSecret: false,
+    encryptKey: false,
+    verificationToken: false,
+  });
+  const [editingFeishuSecrets, setEditingFeishuSecrets] = useState<Record<FeishuSecretKey, boolean>>({
+    appSecret: false,
+    encryptKey: false,
+    verificationToken: false,
+  });
   const [form, setForm] = useState({
     model: "",
     provider: "",
@@ -107,6 +208,17 @@ export function SettingsView({
       apiKey: prev.provider === payload.web_search.provider ? prev.apiKey ?? "" : "",
       baseUrl: payload.web_search.base_url ?? "",
     }));
+    setFeishuForm(feishuSettingsToForm(getFeishuSettings(payload)));
+    setVisibleFeishuSecrets({
+      appSecret: false,
+      encryptKey: false,
+      verificationToken: false,
+    });
+    setEditingFeishuSecrets({
+      appSecret: false,
+      encryptKey: false,
+      verificationToken: false,
+    });
   }, []);
 
   useEffect(() => {
@@ -151,6 +263,22 @@ export function SettingsView({
       form.provider !== settings.agent.provider
     );
   }, [form, settings]);
+
+  const feishuDirty = useMemo(() => {
+    if (!settings) return false;
+    const feishu = getFeishuSettings(settings);
+    return (
+      feishuForm.enabled !== feishu.enabled ||
+      feishuForm.appId.trim() !== feishu.appId ||
+      feishuForm.appSecret.trim().length > 0 ||
+      feishuForm.encryptKey.trim().length > 0 ||
+      feishuForm.verificationToken.trim().length > 0 ||
+      parseAllowFrom(feishuForm.allowFromText).join("\n") !== feishu.allowFrom.join("\n") ||
+      feishuForm.groupPolicy !== feishu.groupPolicy ||
+      feishuForm.streaming !== feishu.streaming ||
+      feishuForm.domain !== feishu.domain
+    );
+  }, [feishuForm, settings]);
 
   const save = async () => {
     if (!dirty || saving) return;
@@ -247,6 +375,35 @@ export function SettingsView({
     }
   };
 
+  const saveFeishu = async () => {
+    if (!settings || feishuSaving || !feishuDirty) return;
+    setFeishuSaving(true);
+    try {
+      const update: FeishuSettingsUpdate = {
+        enabled: feishuForm.enabled,
+        appId: feishuForm.appId.trim(),
+        allowFrom: parseAllowFrom(feishuForm.allowFromText),
+        groupPolicy: feishuForm.groupPolicy,
+        streaming: feishuForm.streaming,
+        domain: feishuForm.domain,
+      };
+      const appSecret = feishuForm.appSecret.trim();
+      const encryptKey = feishuForm.encryptKey.trim();
+      const verificationToken = feishuForm.verificationToken.trim();
+      if (appSecret) update.appSecret = appSecret;
+      if (encryptKey) update.encryptKey = encryptKey;
+      if (verificationToken) update.verificationToken = verificationToken;
+
+      const payload = await updateFeishuSettings(token, update);
+      applyPayload(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setFeishuSaving(false);
+    }
+  };
+
   const resetProviderDraft = useCallback((providerName: string) => {
     const provider = settings?.providers.find((item) => item.name === providerName);
     if (!provider) return;
@@ -310,6 +467,23 @@ export function SettingsView({
     });
   };
 
+  const toggleFeishuSecretVisibility = (field: FeishuSecretKey) => {
+    setVisibleFeishuSecrets((prev) => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const toggleFeishuSecretEditing = (field: FeishuSecretKey) => {
+    setEditingFeishuSecrets((prev) => {
+      const nextEditing = !prev[field];
+      if (!nextEditing) {
+        setFeishuForm((form) => ({ ...form, [field]: "" }));
+        setVisibleFeishuSecrets((visible) => ({ ...visible, [field]: false }));
+      }
+      return { ...prev, [field]: nextEditing };
+    });
+  };
+
+  const sectionTitle = activeSection === "feishu" ? "Feishu" : t(`settings.nav.${activeSection}`);
+
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_50%_0%,hsl(var(--muted))_0%,hsl(var(--background))_42%)]">
       <SettingsSidebar
@@ -326,7 +500,7 @@ export function SettingsView({
               {t("settings.sidebar.title")}
             </p>
             <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-foreground sm:text-[34px]">
-              {t(`settings.nav.${activeSection}`)}
+              {sectionTitle}
             </h1>
           </div>
 
@@ -362,7 +536,7 @@ export function SettingsView({
                   isRestarting={isRestarting}
                   onOpenByok={() => setActiveSection("byok")}
                 />
-              ) : (
+              ) : activeSection === "byok" ? (
                 <ByokSettings
                   settings={settings}
                   expandedProvider={expandedProvider}
@@ -400,6 +574,20 @@ export function SettingsView({
                   onResetWebSearchDraft={resetWebSearchDraft}
                   onSaveWebSearch={saveWebSearch}
                 />
+              ) : (
+                <FeishuSettingsPanel
+                  settings={getFeishuSettings(settings)}
+                  form={feishuForm}
+                  setForm={setFeishuForm}
+                  dirty={feishuDirty}
+                  saving={feishuSaving}
+                  requiresRestart={settings.requires_restart}
+                  visibleSecrets={visibleFeishuSecrets}
+                  editingSecrets={editingFeishuSecrets}
+                  onToggleSecret={toggleFeishuSecretVisibility}
+                  onToggleSecretEditing={toggleFeishuSecretEditing}
+                  onSave={saveFeishu}
+                />
               )}
             </div>
           ) : null}
@@ -412,6 +600,7 @@ export function SettingsView({
 const SETTINGS_NAV_ITEMS = [
   { key: "general", icon: Settings },
   { key: "byok", icon: KeyRound },
+  { key: "feishu", icon: MessageCircle },
 ] as const;
 
 function SettingsSidebar({
@@ -445,6 +634,7 @@ function SettingsSidebar({
       <nav aria-label={t("settings.sidebar.ariaLabel")} className="space-y-1">
         {SETTINGS_NAV_ITEMS.map(({ key, icon: Icon }) => {
           const active = key === activeSection;
+          const label = key === "feishu" ? "Feishu" : t(`settings.nav.${key}`);
           return (
             <button
               key={key}
@@ -459,7 +649,7 @@ function SettingsSidebar({
               )}
             >
               <Icon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-              <span className="truncate">{t(`settings.nav.${key}`)}</span>
+              <span className="truncate">{label}</span>
             </button>
           );
         })}
@@ -863,6 +1053,257 @@ function WebSearchByokSettings({
         </div>
       </SettingsGroup>
     </section>
+  );
+}
+
+function FeishuSettingsPanel({
+  settings,
+  form,
+  setForm,
+  dirty,
+  saving,
+  requiresRestart,
+  visibleSecrets,
+  editingSecrets,
+  onToggleSecret,
+  onToggleSecretEditing,
+  onSave,
+}: {
+  settings: FeishuSettings;
+  form: FeishuForm;
+  setForm: Dispatch<SetStateAction<FeishuForm>>;
+  dirty: boolean;
+  saving: boolean;
+  requiresRestart: boolean;
+  visibleSecrets: Record<FeishuSecretKey, boolean>;
+  editingSecrets: Record<FeishuSecretKey, boolean>;
+  onToggleSecret: (field: FeishuSecretKey) => void;
+  onToggleSecretEditing: (field: FeishuSecretKey) => void;
+  onSave: () => void;
+}) {
+  const { t } = useTranslation();
+  const groupPolicyOptions = [
+    { name: "mention", label: "Mention only" },
+    { name: "open", label: "Open" },
+  ];
+  const domainOptions = [
+    { name: "feishu", label: "Feishu" },
+    { name: "lark", label: "Lark" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <section>
+        <SettingsSectionTitle>Connection</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow title="Enabled" description="Controls channels.feishu.enabled.">
+            <TogglePill
+              checked={form.enabled}
+              onChange={(enabled) => setForm((prev) => ({ ...prev, enabled }))}
+            />
+          </SettingsRow>
+          <SettingsRow title="Domain" description="Feishu for China, Lark for international workspaces.">
+            <ProviderPicker
+              providers={domainOptions}
+              value={form.domain}
+              emptyLabel="Select domain"
+              onChange={(domain) =>
+                setForm((prev) => ({ ...prev, domain: domain as FeishuForm["domain"] }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow title="App ID" description="Feishu/Lark app_id.">
+            <Input
+              value={form.appId}
+              onChange={(event) => setForm((prev) => ({ ...prev, appId: event.target.value }))}
+              placeholder="cli_xxx"
+              className="h-9 w-[320px] rounded-full text-[13px]"
+            />
+          </SettingsRow>
+          {FEISHU_SECRET_FIELDS.map((field) => (
+            <SettingsRow
+              key={field.key}
+              title={field.label}
+              description={field.description}
+            >
+              <SecretSettingsInput
+                value={form[field.key]}
+                hint={settings[field.hintKey]}
+                visible={visibleSecrets[field.key]}
+                editing={editingSecrets[field.key]}
+                placeholder={field.placeholder}
+                configuredPlaceholder={t("settings.byok.apiKeyConfiguredPlaceholder")}
+                configuredHint={t("settings.byok.configuredKeyHint")}
+                showLabel={t("settings.byok.showApiKey")}
+                hideLabel={t("settings.byok.hideApiKey")}
+                editLabel={t("settings.actions.edit")}
+                onChange={(value) => setForm((prev) => ({ ...prev, [field.key]: value }))}
+                onToggleVisible={() => onToggleSecret(field.key)}
+                onToggleEditing={() => onToggleSecretEditing(field.key)}
+              />
+            </SettingsRow>
+          ))}
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>Access</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow title="Allow From" description="One sender or chat id per line; use * to allow all.">
+            <textarea
+              value={form.allowFromText}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, allowFromText: event.target.value }))
+              }
+              spellCheck={false}
+              placeholder={"ou_xxx\noc_xxx\n*"}
+              className="min-h-[96px] w-[320px] resize-y rounded-[18px] border border-input bg-background px-3 py-2 text-[13px] text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </SettingsRow>
+          <SettingsRow title="Group Policy" description="How group messages are accepted.">
+            <ProviderPicker
+              providers={groupPolicyOptions}
+              value={form.groupPolicy}
+              emptyLabel="Select policy"
+              onChange={(groupPolicy) =>
+                setForm((prev) => ({
+                  ...prev,
+                  groupPolicy: groupPolicy as FeishuForm["groupPolicy"],
+                }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow title="Streaming" description="Controls channels.feishu.streaming.">
+            <TogglePill
+              checked={form.streaming}
+              onChange={(streaming) => setForm((prev) => ({ ...prev, streaming }))}
+            />
+          </SettingsRow>
+          {dirty || saving || requiresRestart ? (
+            <SettingsFooter
+              dirty={dirty}
+              saving={saving}
+              saved={requiresRestart && !dirty}
+              onSave={onSave}
+            />
+          ) : null}
+        </SettingsGroup>
+      </section>
+    </div>
+  );
+}
+
+function SecretSettingsInput({
+  value,
+  hint,
+  visible,
+  editing,
+  placeholder,
+  configuredPlaceholder,
+  configuredHint,
+  showLabel,
+  hideLabel,
+  editLabel,
+  onChange,
+  onToggleVisible,
+  onToggleEditing,
+}: {
+  value: string;
+  hint?: string | null;
+  visible: boolean;
+  editing: boolean;
+  placeholder: string;
+  configuredPlaceholder: string;
+  configuredHint: string;
+  showLabel: string;
+  hideLabel: string;
+  editLabel: string;
+  onChange: (value: string) => void;
+  onToggleVisible: () => void;
+  onToggleEditing: () => void;
+}) {
+  const hasExistingSecret = !!hint;
+  const showInput = !hasExistingSecret || editing;
+
+  return (
+    <div className="relative w-[320px] max-w-full">
+      {showInput ? (
+        <>
+          <Input
+            type={visible ? "text" : "password"}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={hasExistingSecret ? configuredPlaceholder : placeholder}
+            className="h-9 rounded-full pr-11 text-[13px]"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onToggleVisible}
+            aria-label={visible ? hideLabel : showLabel}
+            className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {visible ? (
+              <EyeOff className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <Eye className="h-3.5 w-3.5" aria-hidden />
+            )}
+          </Button>
+        </>
+      ) : (
+        <>
+          <div className="flex h-9 items-center rounded-full border border-input bg-background px-3 pr-11 text-[13px] text-muted-foreground">
+            {hint ?? configuredHint}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onToggleEditing}
+            aria-label={editLabel}
+            className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TogglePill({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="inline-flex h-8 items-center rounded-full bg-muted p-0.5 text-[12px] font-medium text-muted-foreground"
+    >
+      <span
+        className={cn(
+          "rounded-full px-3 py-1 transition-colors",
+          checked && "bg-background text-foreground shadow-sm",
+        )}
+      >
+        On
+      </span>
+      <span
+        className={cn(
+          "rounded-full px-3 py-1 transition-colors",
+          !checked && "bg-background text-foreground shadow-sm",
+        )}
+      >
+        Off
+      </span>
+    </button>
   );
 }
 
