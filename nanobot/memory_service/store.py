@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from loguru import logger
 
 from nanobot.memory_service.models import (
     EventRecord,
     EventWriteResult,
     JobRecord,
     JobWriteResult,
+    SceneRecord,
     SearchResult,
     TurnEndRequest,
     TypedMemoryRecord,
@@ -38,6 +42,16 @@ def _json_loads_object(value: str | None) -> dict[str, Any] | None:
     except Exception:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _json_loads_list(value: str | None) -> list[Any] | None:
+    if value is None:
+        return None
+    try:
+        payload = json.loads(value)
+    except Exception:
+        return None
+    return payload if isinstance(payload, list) else None
 
 
 _FTS_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
@@ -66,11 +80,21 @@ def _like_pattern_from_user_query(query: str) -> str:
     return f"%{escaped}%"
 
 
+def _like_pattern_from_exact_text(value: str) -> str:
+    escaped = value.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _scene_user_dir(user_id: str) -> str:
+    return hashlib.sha256(user_id.encode()).hexdigest()[:12]
+
+
 class MemoryStore:
     """Synchronous SQLite store for M1 memory events and jobs."""
 
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path, *, workspace_path: str | Path | None = None):
         self.db_path = Path(db_path).expanduser()
+        self.workspace_path = Path(workspace_path).expanduser() if workspace_path is not None else None
 
     def initialize(self) -> None:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,10 +168,71 @@ class MemoryStore:
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_type_dedupe
                     ON jobs(job_type, dedupe_key)
                     WHERE dedupe_key IS NOT NULL AND dedupe_key != '';
+
+                CREATE TABLE IF NOT EXISTS scenes (
+                    user_id TEXT NOT NULL,
+                    slug TEXT NOT NULL,
+                    title TEXT,
+                    tags_json TEXT,
+                    summary TEXT,
+                    char_count INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    deleted_at TEXT,
+                    PRIMARY KEY (user_id, slug)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_scenes_user_updated
+                    ON scenes(user_id, updated_at);
                 """
             )
             self._ensure_typed_memory_lifecycle_columns(conn)
+            self._ensure_scenes_composite_pk(conn)
             self._ensure_fts_trigram_tables(conn)
+
+    def _ensure_scenes_composite_pk(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'scenes'",
+        ).fetchone()
+        sql = str(row["sql"] or "") if row is not None else ""
+        if re.search(r"PRIMARY\s+KEY\s*\(\s*user_id\s*,\s*slug\s*\)", sql, re.IGNORECASE):
+            return
+
+        conn.execute("ALTER TABLE scenes RENAME TO scenes_legacy")
+        conn.execute(
+            """
+            CREATE TABLE scenes (
+                user_id TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                title TEXT,
+                tags_json TEXT,
+                summary TEXT,
+                char_count INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT,
+                PRIMARY KEY (user_id, slug)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO scenes (
+                user_id, slug, title, tags_json, summary, char_count,
+                created_at, updated_at, deleted_at
+            )
+            SELECT user_id, slug, title, tags_json, summary, char_count,
+                created_at, updated_at, deleted_at
+            FROM scenes_legacy
+            """
+        )
+        conn.execute("DROP TABLE scenes_legacy")
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_scenes_user_updated
+                ON scenes(user_id, updated_at)
+            """
+        )
 
     def _ensure_typed_memory_lifecycle_columns(self, conn: sqlite3.Connection) -> None:
         columns = {
@@ -190,6 +275,16 @@ class MemoryStore:
                 "SELECT id, text FROM typed_memories WHERE deleted_at IS NULL"
             ),
         )
+        self._ensure_fts_trigram_table(
+            conn,
+            table_name="scenes_fts",
+            create_sql=(
+                "CREATE VIRTUAL TABLE scenes_fts "
+                "USING fts5(slug UNINDEXED, user_id UNINDEXED, title, summary, body, tokenize='trigram')"
+            ),
+            repopulate_sql=None,
+            repopulate_callable=self._repopulate_scenes_fts,
+        )
 
     def _ensure_fts_trigram_table(
         self,
@@ -197,7 +292,8 @@ class MemoryStore:
         *,
         table_name: str,
         create_sql: str,
-        repopulate_sql: str,
+        repopulate_sql: str | None,
+        repopulate_callable: Callable[[sqlite3.Connection], None] | None = None,
     ) -> None:
         row = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -205,11 +301,62 @@ class MemoryStore:
         ).fetchone()
         sql = str(row["sql"]) if row is not None else ""
         if row is not None and _is_trigram_fts(sql):
-            return
+            if table_name != "scenes_fts" or self._fts_table_has_column(conn, table_name, "user_id"):
+                return
         if row is not None:
             conn.execute(f"DROP TABLE {table_name}")
         conn.execute(create_sql)
-        conn.execute(repopulate_sql)
+        if repopulate_callable is not None:
+            repopulate_callable(conn)
+        elif repopulate_sql is not None:
+            conn.execute(repopulate_sql)
+
+    def _fts_table_has_column(
+        self,
+        conn: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+    ) -> bool:
+        return any(
+            str(row["name"]) == column_name
+            for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        )
+
+    def _repopulate_scenes_fts(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute(
+            """
+            SELECT slug, user_id, title, summary
+            FROM scenes
+            WHERE deleted_at IS NULL
+            """
+        ).fetchall()
+        for row in rows:
+            slug = str(row["slug"])
+            user_id = str(row["user_id"])
+            body = self._read_scene_body_for_index(user_id=user_id, slug=slug)
+            conn.execute(
+                "INSERT INTO scenes_fts(slug, user_id, title, summary, body) VALUES (?, ?, ?, ?, ?)",
+                (slug, user_id, row["title"] or "", row["summary"] or "", body),
+            )
+
+    def _read_scene_body_for_index(self, *, user_id: str, slug: str) -> str:
+        candidates = []
+        if self.workspace_path is not None:
+            base = self.workspace_path / "memory" / "scenes"
+        else:
+            base = self.db_path.parent / "memory" / "scenes"
+        candidates.append(base / _scene_user_dir(user_id) / f"{slug}.md")
+        candidates.append(base / f"{slug}.md")
+        for path in candidates:
+            try:
+                return path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                continue
+            except OSError:
+                logger.warning("Failed to read scene file during FTS migration: {}", path)
+                return ""
+        logger.warning("Scene file missing during FTS migration: {}", candidates[0])
+        return ""
 
     def insert_event(self, request: TurnEndRequest) -> EventWriteResult:
         self.initialize()
@@ -628,6 +775,176 @@ class MemoryStore:
             ).fetchone()
         return _typed_memory_from_row(row) if row is not None else None
 
+    def upsert_scene(
+        self,
+        *,
+        slug: str,
+        user_id: str,
+        title: str | None,
+        tags: list[str],
+        summary: str | None,
+        body: str,
+        char_count: int,
+    ) -> SceneRecord:
+        self.initialize()
+        now = _now_iso()
+        tags_json = _json_dumps(tags)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT created_at FROM scenes WHERE user_id = ? AND slug = ?",
+                (user_id, slug),
+            ).fetchone()
+            created_at = str(row["created_at"]) if row is not None else now
+            conn.execute(
+                """
+                INSERT INTO scenes (
+                    user_id, slug, title, tags_json, summary, char_count,
+                    created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                ON CONFLICT(user_id, slug) DO UPDATE SET
+                    title = excluded.title,
+                    tags_json = excluded.tags_json,
+                    summary = excluded.summary,
+                    char_count = excluded.char_count,
+                    updated_at = excluded.updated_at,
+                    deleted_at = NULL
+                """,
+                (
+                    user_id,
+                    slug,
+                    title,
+                    tags_json,
+                    summary,
+                    int(char_count),
+                    created_at,
+                    now,
+                ),
+            )
+            conn.execute("DELETE FROM scenes_fts WHERE slug = ? AND user_id = ?", (slug, user_id))
+            conn.execute(
+                "INSERT INTO scenes_fts(slug, user_id, title, summary, body) VALUES (?, ?, ?, ?, ?)",
+                (slug, user_id, title or "", summary or "", body),
+            )
+            final = conn.execute(
+                "SELECT * FROM scenes WHERE slug = ? AND user_id = ?",
+                (slug, user_id),
+            ).fetchone()
+        return _scene_from_row(final)
+
+    def get_scene(self, slug: str, user_id: str) -> SceneRecord | None:
+        self.initialize()
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM scenes
+                WHERE slug = ? AND user_id = ? AND deleted_at IS NULL
+                """,
+                (slug, user_id),
+            ).fetchone()
+        return _scene_from_row(row) if row is not None else None
+
+    def list_scenes(
+        self,
+        *,
+        user_id: str,
+        tag: str | None = None,
+        limit: int = 50,
+    ) -> list[SceneRecord]:
+        self.initialize()
+        limit = max(1, min(int(limit), 500))
+        clauses = ["user_id = ?", "deleted_at IS NULL"]
+        params: list[Any] = [user_id]
+        if tag:
+            clauses.append("tags_json LIKE ? ESCAPE '\\'")
+            params.append(_like_pattern_from_exact_text(_json_dumps(tag)))
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM scenes
+                WHERE {' AND '.join(clauses)}
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                tuple(params),
+            ).fetchall()
+        return [_scene_from_row(row) for row in rows]
+
+    def search_scenes(
+        self,
+        *,
+        user_id: str,
+        query: str,
+        limit: int = 10,
+    ) -> list[SceneRecord]:
+        self.initialize()
+        limit = max(1, min(int(limit), 50))
+        fts_query = _fts_or_query_from_user_query(query)
+        if not fts_query:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.*
+                FROM scenes_fts
+                JOIN scenes s ON s.slug = scenes_fts.slug AND s.user_id = scenes_fts.user_id
+                WHERE scenes_fts MATCH ?
+                    AND s.user_id = ?
+                    AND s.deleted_at IS NULL
+                ORDER BY s.updated_at DESC
+                LIMIT ?
+                """,
+                (fts_query, user_id, limit),
+            ).fetchall()
+            if not rows:
+                pattern = _like_pattern_from_user_query(query)
+                rows = conn.execute(
+                    """
+                    SELECT s.*
+                    FROM scenes_fts
+                    JOIN scenes s ON s.slug = scenes_fts.slug AND s.user_id = scenes_fts.user_id
+                    WHERE s.user_id = ?
+                        AND s.deleted_at IS NULL
+                        AND (
+                            scenes_fts.title LIKE ? ESCAPE '\\'
+                            OR scenes_fts.summary LIKE ? ESCAPE '\\'
+                            OR scenes_fts.body LIKE ? ESCAPE '\\'
+                        )
+                    ORDER BY s.updated_at DESC
+                    LIMIT ?
+                    """,
+                    (user_id, pattern, pattern, pattern, limit),
+                ).fetchall()
+        return [_scene_from_row(row) for row in rows]
+
+    def delete_scene(self, slug: str, user_id: str) -> SceneRecord | None:
+        self.initialize()
+        now = _now_iso()
+        with self._connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT * FROM scenes
+                WHERE slug = ? AND user_id = ? AND deleted_at IS NULL
+                """,
+                (slug, user_id),
+            ).fetchone()
+            if existing is None:
+                return None
+            conn.execute(
+                """
+                UPDATE scenes
+                SET deleted_at = ?, updated_at = ?
+                WHERE slug = ? AND user_id = ?
+                """,
+                (now, now, slug, user_id),
+            )
+            conn.execute("DELETE FROM scenes_fts WHERE slug = ? AND user_id = ?", (slug, user_id))
+            row = conn.execute(
+                "SELECT * FROM scenes WHERE slug = ? AND user_id = ?",
+                (slug, user_id),
+            ).fetchone()
+        return _scene_from_row(row) if row is not None else None
+
     def create_job(
         self,
         *,
@@ -734,6 +1051,22 @@ def _typed_memory_from_row(row: sqlite3.Row) -> TypedMemoryRecord:
         retired_reason=row["retired_reason"],
         retired_evidence_event_id=row["retired_evidence_event_id"],
         superseded_by_id=row["superseded_by_id"],
+        deleted_at=row["deleted_at"],
+    )
+
+
+def _scene_from_row(row: sqlite3.Row) -> SceneRecord:
+    tags_payload = _json_loads_list(row["tags_json"])
+    tags = [str(item) for item in tags_payload or [] if isinstance(item, str)]
+    return SceneRecord(
+        slug=str(row["slug"]),
+        user_id=str(row["user_id"]),
+        title=row["title"],
+        tags=tags,
+        summary=row["summary"],
+        char_count=int(row["char_count"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
         deleted_at=row["deleted_at"],
     )
 

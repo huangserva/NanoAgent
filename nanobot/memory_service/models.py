@@ -87,6 +87,19 @@ class TypedMemoryWriteResult:
 
 
 @dataclass(frozen=True)
+class SceneRecord:
+    slug: str
+    user_id: str
+    title: str | None
+    tags: list[str]
+    summary: str | None
+    char_count: int
+    created_at: str
+    updated_at: str
+    deleted_at: str | None = None
+
+
+@dataclass(frozen=True)
 class JobRecord:
     id: str
     job_type: str

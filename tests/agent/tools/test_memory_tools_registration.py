@@ -9,7 +9,14 @@ import pytest
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.tools.context import ToolContext
 from nanobot.agent.tools.loader import ToolLoader
-from nanobot.agent.tools.memory import MemoryForgetTool, MemoryRecallTool, MemoryStoreTool
+from nanobot.agent.tools.memory import (
+    MemoryForgetTool,
+    MemoryRecallTool,
+    MemoryStoreTool,
+    SceneListTool,
+    SceneReadTool,
+    SceneWriteTool,
+)
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ToolsConfig
@@ -22,7 +29,14 @@ from nanobot.providers.base import LLMResponse
 def _load_names(external_memory) -> list[str]:
     registry = ToolRegistry()
     loader = ToolLoader(
-        test_classes=[MemoryForgetTool, MemoryRecallTool, MemoryStoreTool],
+        test_classes=[
+            MemoryForgetTool,
+            MemoryRecallTool,
+            MemoryStoreTool,
+            SceneListTool,
+            SceneReadTool,
+            SceneWriteTool,
+        ],
     )
     ctx = ToolContext(
         config=ToolsConfig(),
@@ -54,6 +68,9 @@ def test_tools_registered_when_injection_mode_tools_only(tmp_path) -> None:
         "memory_forget",
         "memory_recall",
         "memory_store",
+        "scene_list",
+        "scene_read",
+        "scene_write",
     ]
 
 
@@ -62,6 +79,9 @@ def test_tools_registered_when_injection_mode_both(tmp_path) -> None:
         "memory_forget",
         "memory_recall",
         "memory_store",
+        "scene_list",
+        "scene_read",
+        "scene_write",
     ]
 
 

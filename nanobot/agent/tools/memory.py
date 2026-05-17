@@ -209,3 +209,196 @@ class MemoryForgetTool(_MemoryToolBase):
         for memory in retired:
             lines.append(f"- id={memory.id[:8]} type={memory.memory_type}: {memory.text}")
         return "\n".join(lines)
+
+
+class SceneReadTool(_MemoryToolBase):
+    @property
+    def name(self) -> str:
+        return "scene_read"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Read a durable cross-session scene block: an LLM-readable topic dossier "
+            "or situational playbook for recurring workflows, project background, "
+            "or user-specific scenarios. Scene blocks are longer Markdown context, "
+            "distinct from typed memory short fact rows."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "pattern": r"^[a-z0-9][a-z0-9-]{0,63}$",
+                    "description": "Scene slug, e.g. project-review-playbook.",
+                },
+            },
+            "required": ["slug"],
+        }
+
+    @property
+    def read_only(self) -> bool:
+        return True
+
+    @property
+    def concurrency_safe(self) -> bool:
+        return True
+
+    async def execute(self, slug: str) -> str:
+        result = self._external_memory.read_scene(
+            slug,
+            sender_id=self._request_ctx.sender_id,
+        )
+        if result is None:
+            return f"Scene '{slug}' does not exist."
+        record, body = result
+        return f"# Scene: {record.slug} (updated {record.updated_at})\n\n{body}"
+
+
+class SceneWriteTool(_MemoryToolBase):
+    @property
+    def name(self) -> str:
+        return "scene_write"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Create or update one durable cross-session scene block. Use this for "
+            "focused Markdown context about one recurring scenario, workflow, or "
+            "topic dossier. Do not use it as a kitchen sink or frequently rewrite "
+            "trivial scenes."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "pattern": r"^[a-z0-9][a-z0-9-]{0,63}$",
+                },
+                "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536,
+                },
+                "title": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "tags": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                        "type": "string",
+                        "maxLength": 32,
+                    },
+                },
+                "summary": {
+                    "type": "string",
+                    "maxLength": 400,
+                },
+            },
+            "required": ["slug", "body"],
+        }
+
+    async def execute(
+        self,
+        slug: str,
+        body: str,
+        title: str | None = None,
+        tags: list[str] | None = None,
+        summary: str | None = None,
+    ) -> str:
+        record = self._external_memory.write_scene(
+            slug,
+            body,
+            sender_id=self._request_ctx.sender_id,
+            title=title,
+            tags=tags,
+            summary=summary,
+        )
+        return f"Scene '{record.slug}' saved ({record.char_count} chars)."
+
+
+class SceneListTool(_MemoryToolBase):
+    @property
+    def name(self) -> str:
+        return "scene_list"
+
+    @property
+    def description(self) -> str:
+        return (
+            "List or search durable scene blocks for the current user. Supports "
+            "tag filtering and free-text search across scene title, summary, and body."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Optional free-text search query.",
+                },
+                "tag": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "description": "Optional scene tag filter.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "default": 20,
+                },
+            },
+        }
+
+    @property
+    def read_only(self) -> bool:
+        return True
+
+    @property
+    def concurrency_safe(self) -> bool:
+        return True
+
+    async def execute(
+        self,
+        query: str | None = None,
+        tag: str | None = None,
+        limit: int = 20,
+    ) -> str:
+        effective_limit = max(1, min(int(limit), 50))
+        clean_query = query.strip() if isinstance(query, str) else ""
+        clean_tag = tag.strip() if isinstance(tag, str) else ""
+        if clean_query:
+            records = self._external_memory.search_scenes(
+                clean_query,
+                sender_id=self._request_ctx.sender_id,
+                limit=effective_limit,
+            )
+            if clean_tag:
+                records = [record for record in records if clean_tag in record.tags]
+        else:
+            records = self._external_memory.list_scenes(
+                sender_id=self._request_ctx.sender_id,
+                tag=clean_tag or None,
+                limit=effective_limit,
+            )
+        if not records:
+            return "No scenes found."
+        lines = ["# Scenes"]
+        for record in records:
+            title = record.title or "(untitled)"
+            tags = ", ".join(record.tags) if record.tags else "-"
+            lines.append(
+                f"- `{record.slug}` | {title} | tags: {tags} | "
+                f"updated: {record.updated_at} | {record.char_count} chars"
+            )
+        return "\n".join(lines)

@@ -358,7 +358,7 @@ class AgentLoop:
                 from nanobot.memory_service.store import MemoryStore
 
                 db_path = Path(em.db_path).expanduser() if em.db_path else get_memory_service_db_path()
-                memory_service = MemoryService(MemoryStore(db_path))
+                memory_service = MemoryService(MemoryStore(db_path), workspace_path=config.workspace_path)
                 external_memory_bridge = ExternalMemoryBridge(
                     memory_service,
                     workspace=config.workspace_path,

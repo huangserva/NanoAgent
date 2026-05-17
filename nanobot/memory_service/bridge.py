@@ -11,7 +11,12 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from nanobot.memory_service.models import SearchRequest, TurnEndRequest, TypedMemoryRecord
+from nanobot.memory_service.models import (
+    SceneRecord,
+    SearchRequest,
+    TurnEndRequest,
+    TypedMemoryRecord,
+)
 from nanobot.memory_service.service import MemoryService
 from nanobot.utils.helpers import truncate_text
 
@@ -125,6 +130,8 @@ class ExternalMemoryBridge:
     ) -> None:
         self._service: MemoryService | None = service
         self.workspace = workspace
+        if self._service is not None and self.workspace is not None:
+            self._service.workspace_path = self.workspace
         self.retrieval_limit = max(1, retrieval_limit)
         self.packet_char_limit = max(256, packet_char_limit)
         self.result_char_limit = max(120, result_char_limit)
@@ -134,8 +141,16 @@ class ExternalMemoryBridge:
     @property
     def service(self) -> MemoryService:
         if self._service is None:
-            self._service = MemoryService()
+            self._service = MemoryService(workspace_path=self.workspace)
+        elif self.workspace is not None and self._service.workspace_path is None:
+            self._service.workspace_path = self.workspace
         return self._service
+
+    @staticmethod
+    def scene_dir(workspace: Path) -> Path:
+        path = workspace / "memory" / "scenes"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def retrieve_for_turn(self, msg: InboundMessage) -> str | None:
         """Return a bounded prompt packet for the current user message."""
@@ -314,6 +329,58 @@ class ExternalMemoryBridge:
             return sender
         digest = hashlib.sha256(str(self.workspace.expanduser().resolve()).encode("utf-8")).hexdigest()[:12]
         return f"{sender}@workspace:{digest}"
+
+    def read_scene(
+        self,
+        slug: str,
+        sender_id: str | None,
+    ) -> tuple[SceneRecord, str] | None:
+        return self.service.read_scene(
+            user_id=self.subject_key(sender_id),
+            slug=slug,
+        )
+
+    def write_scene(
+        self,
+        slug: str,
+        body: str,
+        sender_id: str | None,
+        title: str | None = None,
+        tags: list[str] | None = None,
+        summary: str | None = None,
+    ) -> SceneRecord:
+        return self.service.upsert_scene(
+            user_id=self.subject_key(sender_id),
+            slug=slug,
+            body=body,
+            title=title,
+            tags=tags,
+            summary=summary,
+        )
+
+    def list_scenes(
+        self,
+        sender_id: str | None,
+        tag: str | None = None,
+        limit: int = 50,
+    ) -> list[SceneRecord]:
+        return self.service.list_scenes(
+            user_id=self.subject_key(sender_id),
+            tag=tag,
+            limit=limit,
+        )
+
+    def search_scenes(
+        self,
+        query: str,
+        sender_id: str | None,
+        limit: int = 10,
+    ) -> list[SceneRecord]:
+        return self.service.search_scenes(
+            user_id=self.subject_key(sender_id),
+            query=query,
+            limit=limit,
+        )
 
     def list_structured_memories(
         self,
