@@ -30,6 +30,8 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.command import CommandContext, CommandRouter, register_builtin_commands
 from nanobot.config.schema import AgentDefaults, ModelPresetConfig
+from nanobot.memory_service.bridge import ExternalMemoryBridge
+from nanobot.memory_service.service import MemoryService
 from nanobot.providers.base import LLMProvider
 from nanobot.providers.factory import ProviderSnapshot
 from nanobot.session.goal_state import goal_state_runtime_lines, goal_state_ws_blob
@@ -106,6 +108,7 @@ class TurnContext:
 
     pending_queue: asyncio.Queue | None = None
     pending_summary: str | None = None
+    external_memory_context: str | None = None
 
     turn_wall_started_at: float = field(default_factory=time.time)
     turn_latency_ms: int | None = None
@@ -182,6 +185,9 @@ class AgentLoop:
         model_preset: str | None = None,
         preset_snapshot_loader: preset_helpers.PresetSnapshotLoader | None = None,
         runtime_model_publisher: Callable[[str, str | None], None] | None = None,
+        memory_service: MemoryService | None = None,
+        external_memory_bridge: ExternalMemoryBridge | None = None,
+        external_memory_enabled: bool = False,
     ):
         from nanobot.config.schema import ToolsConfig
 
@@ -233,6 +239,14 @@ class AgentLoop:
         self._extra_hooks: list[AgentHook] = hooks or []
 
         self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
+        if external_memory_bridge is not None:
+            self.external_memory = external_memory_bridge
+        elif memory_service is not None:
+            self.external_memory = ExternalMemoryBridge(memory_service, workspace=workspace)
+        elif external_memory_enabled:
+            self.external_memory = ExternalMemoryBridge(workspace=workspace)
+        else:
+            self.external_memory = None
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
         # One file-read/write tracker per logical session. The tool registry is
@@ -327,6 +341,7 @@ class AgentLoop:
             config,
             provider_snapshot_loader,
         )
+        external_memory_enabled = extra.pop("external_memory_enabled", False)
         return cls(
             bus=bus,
             provider=provider,
@@ -352,6 +367,7 @@ class AgentLoop:
             model_preset=defaults.model_preset,
             provider_snapshot_loader=provider_snapshot_loader,
             preset_snapshot_loader=preset_snapshot_loader,
+            external_memory_enabled=external_memory_enabled,
             **extra,
         )
 
@@ -596,6 +612,7 @@ class AgentLoop:
         session: Session,
         history: list[dict[str, Any]],
         pending_summary: str | None,
+        external_memory_context: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the initial message list for the LLM turn."""
         return self.context.build_messages(
@@ -607,7 +624,18 @@ class AgentLoop:
             sender_id=msg.sender_id,
             session_summary=pending_summary,
             session_metadata=session.metadata,
+            external_memory_context=external_memory_context,
         )
+
+    def _retrieve_external_memory(self, ctx: TurnContext) -> str | None:
+        if self.external_memory is None:
+            return None
+        return self.external_memory.retrieve_for_turn(ctx.msg)
+
+    def _record_external_memory(self, ctx: TurnContext) -> None:
+        if self.external_memory is None:
+            return
+        self.external_memory.record_turn(ctx)
 
     async def _dispatch_command_inline(
         self,
@@ -1339,9 +1367,14 @@ class AgentLoop:
             "include_timestamps": True,
         }
         ctx.history = ctx.session.get_history(**_hist_kwargs)
+        ctx.external_memory_context = self._retrieve_external_memory(ctx)
 
         ctx.initial_messages = self._build_initial_messages(
-            ctx.msg, ctx.session, ctx.history, ctx.pending_summary
+            ctx.msg,
+            ctx.session,
+            ctx.history,
+            ctx.pending_summary,
+            ctx.external_memory_context,
         )
         ctx.user_persisted_early = self._persist_user_message_early(
             ctx.msg, ctx.session
@@ -1400,6 +1433,7 @@ class AgentLoop:
         self._clear_pending_user_turn(ctx.session)
         self._clear_runtime_checkpoint(ctx.session)
         self.sessions.save(ctx.session)
+        self._record_external_memory(ctx)
         self._schedule_background(
             self.consolidator.maybe_consolidate_by_tokens(
                 ctx.session,

@@ -27,6 +27,8 @@ class TestIsDispatchableCommand:
         assert router.is_dispatchable_command("/dream-log")
         assert router.is_dispatchable_command("/dream-restore")
         assert router.is_dispatchable_command("/goal")
+        assert router.is_dispatchable_command("/memory")
+        assert router.is_dispatchable_command("/forget")
         assert router.is_dispatchable_command("/pairing")
 
     def test_prefix_commands_match(self, router: CommandRouter) -> None:
@@ -34,6 +36,9 @@ class TestIsDispatchableCommand:
         assert router.is_dispatchable_command("/dream-restore def456")
         assert router.is_dispatchable_command("/model fast")
         assert router.is_dispatchable_command("/goal migrate the database")
+        assert router.is_dispatchable_command("/memory list preference")
+        assert router.is_dispatchable_command("/memory forget #2")
+        assert router.is_dispatchable_command("/forget latest")
         assert router.is_dispatchable_command("/pairing list")
         assert router.is_dispatchable_command("/pairing approve CODE")
 

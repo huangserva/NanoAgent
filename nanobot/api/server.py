@@ -17,6 +17,8 @@ from aiohttp import web
 from loguru import logger
 
 from nanobot.config.paths import get_media_dir
+from nanobot.memory_service.api import register_memory_routes
+from nanobot.memory_service.service import MemoryService
 from nanobot.utils.helpers import safe_filename
 from nanobot.utils.media_decode import (
     MAX_FILE_SIZE,
@@ -378,7 +380,10 @@ async def handle_health(request: web.Request) -> web.Response:
 
 
 def create_app(
-    agent_loop, model_name: str = "nanobot", request_timeout: float = 120.0
+    agent_loop,
+    model_name: str = "nanobot",
+    request_timeout: float = 120.0,
+    memory_service: MemoryService | None = None,
 ) -> web.Application:
     """Create the aiohttp application.
 
@@ -386,6 +391,7 @@ def create_app(
         agent_loop: An initialized AgentLoop instance.
         model_name: Model name reported in responses.
         request_timeout: Per-request timeout in seconds.
+        memory_service: Optional memory service instance for tests or custom stores.
     """
     app = web.Application(client_max_size=20 * 1024 * 1024)  # 20MB for base64 images
     app["agent_loop"] = agent_loop
@@ -396,4 +402,5 @@ def create_app(
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)
     app.router.add_get("/health", handle_health)
+    register_memory_routes(app, service=memory_service)
     return app

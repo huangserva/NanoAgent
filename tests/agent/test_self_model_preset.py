@@ -279,6 +279,32 @@ def test_from_config_injects_default_preset(tmp_path) -> None:
     assert loop.model_presets["default"].model == "openai/gpt-4.1"
 
 
+def test_from_config_external_memory_defaults_disabled(tmp_path) -> None:
+    from unittest.mock import patch
+
+    from nanobot.config.schema import Config
+    config = Config.model_validate({
+        "agents": {"defaults": {"model": "openai/gpt-4.1", "workspace": str(tmp_path)}},
+    })
+    fake_provider = _provider("openai/gpt-4.1")
+    with patch("nanobot.providers.factory.make_provider", return_value=fake_provider):
+        loop = AgentLoop.from_config(config)
+    assert loop.external_memory is None
+
+
+def test_from_config_external_memory_can_be_explicitly_enabled(tmp_path) -> None:
+    from unittest.mock import patch
+
+    from nanobot.config.schema import Config
+    config = Config.model_validate({
+        "agents": {"defaults": {"model": "openai/gpt-4.1", "workspace": str(tmp_path)}},
+    })
+    fake_provider = _provider("openai/gpt-4.1")
+    with patch("nanobot.providers.factory.make_provider", return_value=fake_provider):
+        loop = AgentLoop.from_config(config, external_memory_enabled=True)
+    assert loop.external_memory is not None
+
+
 def test_from_config_static_preset_loader_does_not_enable_hot_reload(tmp_path) -> None:
     from unittest.mock import patch
 

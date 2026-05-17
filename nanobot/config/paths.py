@@ -38,6 +38,16 @@ def get_cron_dir() -> Path:
     return get_runtime_subdir("cron")
 
 
+def get_memory_service_dir() -> Path:
+    """Return the external memory service storage directory."""
+    return get_runtime_subdir("memory-service")
+
+
+def get_memory_service_db_path() -> Path:
+    """Return the external memory service SQLite database path."""
+    return get_data_dir() / "memory-service" / "memory.db"
+
+
 def get_logs_dir() -> Path:
     """Return the logs directory."""
     return get_runtime_subdir("logs")

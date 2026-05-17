@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from nanobot import __version__
 from nanobot.bus.events import OutboundMessage
 from nanobot.command.router import CommandContext, CommandRouter
-from nanobot.utils.helpers import build_status_content
+from nanobot.memory_service.models import TypedMemoryRecord
+from nanobot.utils.helpers import build_status_content, truncate_text
 from nanobot.utils.restart import set_restart_notice_to_env
 
 
@@ -72,6 +73,20 @@ BUILTIN_COMMAND_SPECS: tuple[BuiltinCommandSpec, ...] = (
         "Print the last N persisted conversation messages.",
         "history",
         "[n]",
+    ),
+    BuiltinCommandSpec(
+        "/memory",
+        "Show memory",
+        "List active structured memories.",
+        "brain",
+        "[list|forget <target>]",
+    ),
+    BuiltinCommandSpec(
+        "/forget",
+        "Forget memory",
+        "Delete matching structured memories.",
+        "trash-2",
+        "[type] <target>",
     ),
     BuiltinCommandSpec(
         "/goal",
@@ -554,6 +569,320 @@ async def cmd_history(ctx: CommandContext) -> OutboundMessage:
     )
 
 
+_MEMORY_LIST_LIMIT = 50
+_MEMORY_TEXT_LIMIT = 180
+_MEMORY_DISABLED = "External memory is not enabled for this agent session."
+_MEMORY_TYPE_HINT = "preference|profile_fact|task_state|project_fact"
+_MEMORY_FORGET_USAGE = (
+    f"Usage: `/forget latest [{_MEMORY_TYPE_HINT}]`, `/forget #N`, "
+    f"or `/forget [{_MEMORY_TYPE_HINT}] <target>`"
+)
+
+
+def _memory_bridge(ctx: CommandContext):
+    return getattr(ctx.loop, "external_memory", None)
+
+
+@dataclass(frozen=True)
+class _ForgetCommand:
+    mode: str
+    memory_type: str | None = None
+    target: str = ""
+    index: int | None = None
+
+
+def _memory_type_from_token(value: str) -> str | None:
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in {"preference", "preferences"}:
+        return "preference"
+    if normalized in {"profile_fact", "profile", "fact", "profile_facts"}:
+        return "profile_fact"
+    if normalized in {"task_state", "task", "tasks", "task_states"}:
+        return "task_state"
+    if normalized in {"project_fact", "project", "projects", "project_facts"}:
+        return "project_fact"
+    return None
+
+
+def _parse_memory_list_args(args: str) -> tuple[str | None, str | None]:
+    args = args.strip()
+    if not args:
+        return None, None
+
+    first, _sep, rest = args.partition(" ")
+    if first.lower() in {"list", "show"}:
+        if not rest.strip():
+            return None, None
+        memory_type = _memory_type_from_token(rest)
+        if memory_type is not None:
+            return memory_type, None
+        return None, f"Usage: `/memory [list|show] [{_MEMORY_TYPE_HINT}]`"
+
+    memory_type = _memory_type_from_token(args)
+    if memory_type is not None:
+        return memory_type, None
+    return None, f"Usage: `/memory [list|show] [{_MEMORY_TYPE_HINT}]`"
+
+
+def _parse_memory_type_and_target(args: str) -> tuple[str | None, str]:
+    args = args.strip()
+    if not args:
+        return None, ""
+    first, _sep, rest = args.partition(" ")
+    memory_type = _memory_type_from_token(first)
+    if memory_type is not None:
+        return memory_type, rest.strip()
+    return None, args
+
+
+def _parse_memory_index(value: str) -> int | None:
+    value = value.strip()
+    if not value.startswith("#"):
+        return None
+    number = value[1:]
+    if not number.isdecimal():
+        return 0
+    return int(number)
+
+
+def _parse_forget_command(args: str) -> _ForgetCommand:
+    args = args.strip()
+    if not args:
+        return _ForgetCommand("usage")
+
+    first, _sep, rest = args.partition(" ")
+    memory_type = _memory_type_from_token(first)
+    if memory_type is not None:
+        return _parse_forget_tail(rest.strip(), memory_type=memory_type)
+
+    if first.lower() == "latest":
+        if not rest.strip():
+            return _ForgetCommand("latest")
+        memory_type = _memory_type_from_token(rest.strip())
+        if memory_type is None:
+            return _ForgetCommand("usage")
+        return _ForgetCommand("latest", memory_type=memory_type)
+
+    index = _parse_memory_index(first)
+    if index is not None:
+        if not rest.strip():
+            return _ForgetCommand("index", index=index)
+        memory_type = _memory_type_from_token(rest.strip())
+        if memory_type is None:
+            return _ForgetCommand("usage")
+        return _ForgetCommand("index", memory_type=memory_type, index=index)
+
+    memory_type, target = _parse_memory_type_and_target(args)
+    if not target:
+        return _ForgetCommand("usage")
+    return _ForgetCommand("target", memory_type=memory_type, target=target)
+
+
+def _parse_forget_tail(args: str, *, memory_type: str) -> _ForgetCommand:
+    if not args:
+        return _ForgetCommand("usage")
+    if args.lower() == "latest":
+        return _ForgetCommand("latest", memory_type=memory_type)
+    index = _parse_memory_index(args)
+    if index is not None:
+        return _ForgetCommand("index", memory_type=memory_type, index=index)
+    return _ForgetCommand("target", memory_type=memory_type, target=args)
+
+
+def _short_memory_id(value: str | None) -> str:
+    return value[:8] if value else "unknown"
+
+
+def _format_memory_line(memory: TypedMemoryRecord, index: int | None = None) -> str:
+    prefix = f"#{index} " if index is not None else "- "
+    text = truncate_text(memory.text, _MEMORY_TEXT_LIMIT)
+    evidence = _short_memory_id(memory.evidence_event_id)
+    return (
+        f"{prefix}[{memory.memory_type}] {text}\n"
+        f"   updated={memory.updated_at} evidence={evidence}"
+    )
+
+
+def _format_memory_list(memories: list[TypedMemoryRecord], *, memory_type: str | None = None) -> str:
+    lines = ["External memory: enabled"]
+    if not memories:
+        typed = f" {memory_type}" if memory_type else ""
+        lines.append(f"No active{typed} structured memories.")
+        return "\n".join(lines)
+    if memory_type:
+        lines.append(f"Active structured memories (type={memory_type}, updated desc):")
+    else:
+        lines.append("Active structured memories (updated desc):")
+    lines.extend(_format_memory_line(memory, index) for index, memory in enumerate(memories, 1))
+    return "\n".join(lines)
+
+
+def _memory_list_command(memory_type: str | None) -> str:
+    return f"`/memory list {memory_type}`" if memory_type else "`/memory list`"
+
+
+def _no_active_memory_message(memory_type: str | None) -> str:
+    typed = f" {memory_type}" if memory_type else ""
+    return f"External memory: enabled\nNo active{typed} structured memories to forget."
+
+
+def _invalid_memory_index_message(index: int | None, memory_type: str | None, total: int) -> str:
+    label = f"#{index}" if index is not None and index > 0 else "#N"
+    typed = f" {memory_type}" if memory_type else ""
+    return (
+        "External memory: enabled\n"
+        f"No active{typed} structured memory numbered {label}. "
+        f"Current list has {total} item(s). Use {_memory_list_command(memory_type)} "
+        "to see current numbers."
+    )
+
+
+def _format_forget_result(
+    forgotten: list[TypedMemoryRecord],
+    *,
+    memory_type: str | None = None,
+    target: str | None = None,
+) -> str:
+    if forgotten:
+        lines = [
+            "External memory: enabled",
+            f"Forgot {len(forgotten)} structured memory item(s):",
+        ]
+        lines.extend(_format_memory_line(memory) for memory in forgotten)
+        return "\n".join(lines)
+
+    typed = f" {memory_type}" if memory_type else ""
+    if target:
+        return (
+            "External memory: enabled\n"
+            f"No active{typed} structured memories matched `{target}`."
+        )
+    return _no_active_memory_message(memory_type)
+
+
+async def cmd_memory(ctx: CommandContext) -> OutboundMessage:
+    """List active structured memories or forget matching entries."""
+    bridge = _memory_bridge(ctx)
+    metadata = {**dict(ctx.msg.metadata or {}), "render_as": "text"}
+    if bridge is None:
+        return OutboundMessage(
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
+            content=_MEMORY_DISABLED,
+            metadata=metadata,
+        )
+
+    args = ctx.args.strip()
+    lower = args.lower()
+    if lower == "forget":
+        return await _cmd_forget_target(ctx, "", metadata=metadata)
+    if lower.startswith("forget "):
+        return await _cmd_forget_target(ctx, args[len("forget "):].strip(), metadata=metadata)
+
+    memory_type, error = _parse_memory_list_args(args)
+    if error is None:
+        try:
+            memories = bridge.list_structured_memories(
+                sender_id=ctx.msg.sender_id,
+                memory_type=memory_type,
+                limit=_MEMORY_LIST_LIMIT,
+            )
+        except Exception:
+            content = "External memory is enabled, but structured memory is currently unavailable."
+        else:
+            content = _format_memory_list(memories, memory_type=memory_type)
+        return OutboundMessage(
+            channel=ctx.msg.channel,
+            chat_id=ctx.msg.chat_id,
+            content=content,
+            metadata=metadata,
+        )
+
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=(
+            f"{error}\n"
+            f"Forget with: `/memory forget latest [{_MEMORY_TYPE_HINT}]`, "
+            f"`/memory forget #N`, or `/memory forget [{_MEMORY_TYPE_HINT}] <target>`"
+        ),
+        metadata=metadata,
+    )
+
+
+async def cmd_forget(ctx: CommandContext) -> OutboundMessage:
+    """Delete matching active structured memories."""
+    return await _cmd_forget_target(
+        ctx,
+        ctx.args.strip(),
+        metadata={**dict(ctx.msg.metadata or {}), "render_as": "text"},
+    )
+
+
+async def _cmd_forget_target(
+    ctx: CommandContext,
+    args: str,
+    *,
+    metadata: dict,
+) -> OutboundMessage:
+    bridge = _memory_bridge(ctx)
+    if bridge is None:
+        content = _MEMORY_DISABLED
+    else:
+        parsed = _parse_forget_command(args)
+        if parsed.mode == "usage":
+            content = _MEMORY_FORGET_USAGE
+        else:
+            try:
+                if parsed.mode == "target":
+                    forgotten = bridge.forget_structured_memories(
+                        sender_id=ctx.msg.sender_id,
+                        target=parsed.target,
+                        memory_type=parsed.memory_type,
+                        limit=_MEMORY_LIST_LIMIT,
+                    )
+                    content = _format_forget_result(
+                        forgotten,
+                        memory_type=parsed.memory_type,
+                        target=parsed.target,
+                    )
+                else:
+                    memories = bridge.list_structured_memories(
+                        sender_id=ctx.msg.sender_id,
+                        memory_type=parsed.memory_type,
+                        limit=_MEMORY_LIST_LIMIT,
+                    )
+                    selected: TypedMemoryRecord | None = None
+                    if parsed.mode == "latest":
+                        selected = memories[0] if memories else None
+                    elif parsed.mode == "index":
+                        if parsed.index is not None and 1 <= parsed.index <= len(memories):
+                            selected = memories[parsed.index - 1]
+                    if selected is None:
+                        if parsed.mode == "index":
+                            content = _invalid_memory_index_message(
+                                parsed.index,
+                                parsed.memory_type,
+                                len(memories),
+                            )
+                        else:
+                            content = _no_active_memory_message(parsed.memory_type)
+                    else:
+                        forgotten = [bridge.delete_structured_memory(selected)]
+                        content = _format_forget_result(
+                            forgotten,
+                            memory_type=parsed.memory_type,
+                        )
+            except Exception:
+                content = "External memory is enabled, but structured memory is currently unavailable."
+    return OutboundMessage(
+        channel=ctx.msg.channel,
+        chat_id=ctx.msg.chat_id,
+        content=content,
+        metadata=metadata,
+    )
+
+
 _GOAL_PROMPT_TEMPLATE = """The user declared a sustained objective for this thread.
 
 Inspect or clarify if needed, then call `long_task` with the refined objective (and optional short ui_summary). Work proceeds as normal assistant turns using your usual tools. When the objective is fully done and verified, call `complete_goal` with a brief recap. If the user later cancels or changes direction, still call `complete_goal` with an honest recap (then `long_task` again only after there is no active goal). Do not use `long_task` / `complete_goal` for trivial one-shot answers.
@@ -639,6 +968,10 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.prefix("/model ", cmd_model)
     router.exact("/history", cmd_history)
     router.prefix("/history ", cmd_history)
+    router.exact("/memory", cmd_memory)
+    router.prefix("/memory ", cmd_memory)
+    router.exact("/forget", cmd_forget)
+    router.prefix("/forget ", cmd_forget)
     router.exact("/goal", cmd_goal)
     router.prefix("/goal ", cmd_goal)
     router.exact("/dream", cmd_dream)
