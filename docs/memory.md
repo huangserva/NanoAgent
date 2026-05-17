@@ -21,7 +21,7 @@ This keeps the system light in the moment, but reflective over time.
 
 ## The Flow
 
-Memory moves through nanobot in two stages.
+Local workspace memory moves through nanobot in two stages.
 
 ### Stage 1: Consolidator
 
@@ -31,9 +31,12 @@ Instead, the `Consolidator` summarizes the oldest safe slice of the conversation
 
 This file is:
 
-- append-only
+- append-oriented during normal consolidation
 - cursor-based
 - optimized for machine consumption first, human inspection second
+
+It is not absolutely append-only: Dream can compact the file after a successful
+run, keeping the newest retained entries and dropping older archive lines.
 
 Each line is a JSON object:
 
@@ -61,6 +64,41 @@ Then it works in two phases:
 
 This is why nanobot's memory is not just archival. It is interpretive.
 
+## External Memory Bridge
+
+nanobot also has an optional external memory service under
+`nanobot/memory_service/`. This is separate from the local Dream memory flow
+above.
+
+The current implementation is a local SQLite service with FTS5 indexes:
+
+- `store.py` stores turn events, typed memories, and reserved job records.
+- `service.py` exposes a small synchronous business layer over that store.
+- `api.py` registers `/v1/memory/turn/end`, `/v1/memory/search`, and
+  `/v1/memory/jobs/{id}` for the OpenAI-compatible API server.
+- `bridge.py` adapts agent turns to the service.
+
+When explicitly injected or enabled in `AgentLoop`, the bridge does two
+best-effort actions:
+
+- pre-turn recall: search the SQLite memory service for relevant event and
+  typed-memory matches, then add a bounded `# Relevant Memory` section to the
+  system prompt
+- post-turn writeback: after the local session is saved, write a compact
+  `turn_end` event and extract simple typed memories such as preferences and
+  profile facts from stable user statements
+
+The memory HTTP routes are still registered on the OpenAI-compatible API
+server, but this bridge is not automatically attached to `AgentLoop` by the
+default CLI, gateway, SDK facade, or OpenAI API construction paths. Callers must
+pass a `MemoryService`, an `ExternalMemoryBridge`, or `external_memory_enabled=True`
+when constructing `AgentLoop`.
+
+It is also not a full productized memory layer yet. The search is SQLite FTS5
+over stored text, not semantic/vector retrieval, and the HTTP API currently
+exposes event write/search and job lookup rather than the full typed-memory
+surface.
+
 ## The Files
 
 ```text
@@ -69,7 +107,7 @@ workspace/
 ├── USER.md              # Stable knowledge about the user
 └── memory/
     ├── MEMORY.md        # Project facts, decisions, and durable context
-    ├── history.jsonl    # Append-only history summaries
+    ├── history.jsonl    # Cursor-based history summaries; compacted after Dream
     ├── .cursor          # Consolidator write cursor
     ├── .dream_cursor    # Dream consumption cursor
     └── .git/            # Version history for long-term memory files
@@ -93,6 +131,10 @@ The old `HISTORY.md` format was pleasant for casual reading, but it was too frag
 - easier batching
 - cleaner migration and compaction
 - a better boundary between raw history and curated knowledge
+
+It is append-oriented during normal consolidation, but not an immutable log.
+After Dream finishes a batch, `MemoryStore.compact_history()` may rewrite the
+file to retain only the configured recent history window.
 
 You can still search it with familiar tools:
 

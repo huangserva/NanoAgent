@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>nanobot -> Personal AI Butler Map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --ink: #17202a;
+      --muted: #586574;
+      --line: #d9dee7;
+      --core: #155e75;
+      --core-soft: #e6f4f8;
+      --extension: #7c3aed;
+      --extension-soft: #f1ecff;
+      --external: #b45309;
+      --external-soft: #fff3dd;
+      --risk: #b42318;
+      --risk-soft: #fff0ee;
+      --ok: #0f766e;
+      --ok-soft: #e7f6f3;
+      --gap: #9a3412;
+      --gap-soft: #fff4e8;
+      --shadow: 0 10px 30px rgba(20, 32, 45, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.58;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 40px 24px 56px;
+    }
+
+    header {
+      margin-bottom: 28px;
+      padding: 28px 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.2;
+      color: var(--ink);
+    }
+
+    h1 {
+      max-width: 860px;
+      font-size: 34px;
+      font-weight: 750;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-bottom: 14px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin-bottom: 10px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: #edf1f5;
+      color: #243242;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    .subtitle {
+      max-width: 900px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .meta {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 3px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      white-space: nowrap;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin: 24px 0 30px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .panel.compact {
+      box-shadow: none;
+      padding: 14px;
+    }
+
+    .panel strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .section {
+      margin-top: 30px;
+      padding-top: 8px;
+    }
+
+    .section-note {
+      max-width: 900px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0 18px;
+      font-size: 13px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .tag.core {
+      background: var(--core-soft);
+      color: var(--core);
+    }
+
+    .tag.extension {
+      background: var(--extension-soft);
+      color: var(--extension);
+    }
+
+    .tag.external {
+      background: var(--external-soft);
+      color: var(--external);
+    }
+
+    .tag.risk {
+      background: var(--risk-soft);
+      color: var(--risk);
+    }
+
+    .tag.ok {
+      background: var(--ok-soft);
+      color: var(--ok);
+    }
+
+    .tag.gap {
+      background: var(--gap-soft);
+      color: var(--gap);
+    }
+
+    .runtime-map {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.35fr) minmax(180px, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .node {
+      min-height: 92px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .node.core-node {
+      border-color: rgba(21, 94, 117, 0.35);
+      background: var(--core-soft);
+    }
+
+    .node.extension-node {
+      border-color: rgba(124, 58, 237, 0.28);
+      background: var(--extension-soft);
+    }
+
+    .node.external-node {
+      border-color: rgba(180, 83, 9, 0.28);
+      background: var(--external-soft);
+    }
+
+    .node-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 7px;
+      font-weight: 750;
+    }
+
+    .node small {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 18px;
+      min-height: 32px;
+    }
+
+    .capability-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .capability {
+      display: grid;
+      gap: 10px;
+      min-height: 210px;
+    }
+
+    .capability table,
+    .roadmap table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      vertical-align: top;
+      text-align: left;
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .roadmap {
+      display: grid;
+      gap: 12px;
+    }
+
+    .phase {
+      display: grid;
+      grid-template-columns: 140px minmax(0, 1fr) minmax(220px, 0.8fr);
+      gap: 14px;
+      align-items: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .phase-index {
+      font-weight: 800;
+      color: var(--core);
+    }
+
+    .phase h3 {
+      margin-bottom: 6px;
+    }
+
+    .scenario {
+      border-left: 4px solid var(--core);
+      background: #ffffff;
+      padding: 18px;
+      border-radius: 8px;
+      border-top: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .maintenance {
+      background: #101820;
+      color: #f5f7fa;
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .maintenance h2,
+    .maintenance h3 {
+      color: #ffffff;
+    }
+
+    .maintenance code {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+    }
+
+    .maintenance .section-note {
+      color: #c8d0db;
+    }
+
+    @media (max-width: 920px) {
+      main {
+        padding: 26px 16px 42px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .summary,
+      .runtime-map,
+      .capability-grid,
+      .two-col,
+      .phase {
+        grid-template-columns: 1fr;
+      }
+
+      .phase {
+        gap: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>nanobot -> 个人 AI 管家全景地图</h1>
+      <p class="subtitle">
+        目标不是把 nanobot 做成另一个 Hermes/OpenClaw 式重系统，而是守住一个极简 Agent runtime kernel，
+        让个人 AI 管家的记忆、任务、连接器、权限和产品体验通过 extension / external layer 演进。
+      </p>
+      <div class="meta">
+        <span class="pill">Source: 当前代码结构</span>
+        <span class="pill">Kernel principle: core stays small, extend at edges</span>
+        <span class="pill">Primary owner view: roadmap + boundaries</span>
+      </div>
+    </header>
+
+    <section class="summary" aria-label="Executive summary">
+      <div class="panel">
+        <strong>一句话判断</strong>
+        <p>
+          nanobot 已经具备 Agent runtime 的主干：message bus、AgentLoop、AgentRunner、tools、providers、
+          session persistence、channels、WebUI 和 optional memory bridge。
+        </p>
+      </div>
+      <div class="panel">
+        <strong>核心边界</strong>
+        <p>
+          进入 core 的只能是稳定运行协议、turn lifecycle、LLM/tool loop、session continuity、extension host
+          和安全边界。个人管家产品逻辑不能进入 <code>agent/runner.py</code>。
+        </p>
+      </div>
+      <div class="panel">
+        <strong>第一阶段验证</strong>
+        <p>
+          用一个 IM/WebUI、一个 provider、一个真实技能和一个提醒闭环，验证“可控、可测、可恢复”的个人工作助理场景。
+        </p>
+      </div>
+    </section>
+
+    <section class="section" id="runtime-kernel">
+      <h2>图 1：Runtime Kernel 图</h2>
+      <p class="section-note">
+        这张图定义 nanobot 作为极简 Agent 核心要守住什么。判断基于真实模块路径，而不是抽象框架想象。
+      </p>
+      <div class="legend">
+        <span class="tag core">Core runtime kernel</span>
+        <span class="tag extension">Extension layer</span>
+        <span class="tag external">External / product layer</span>
+        <span class="tag risk">变重风险</span>
+      </div>
+
+      <div class="runtime-map">
+        <div class="stack">
+          <div class="node extension-node">
+            <div class="node-title">Adapters / Entry Points <span class="tag extension">extension</span></div>
+            <small>
+              <code>nanobot/cli/commands.py</code><br>
+              <code>nanobot/nanobot.py</code><br>
+              <code>nanobot/api/server.py</code><br>
+              <code>nanobot/channels/*</code><br>
+              <code>webui/*</code>
+            </small>
+          </div>
+          <div class="arrow">feeds messages into</div>
+          <div class="node extension-node">
+            <div class="node-title">Concrete Capabilities <span class="tag extension">extension</span></div>
+            <small>
+              Tools: <code>agent/tools/filesystem.py</code>, <code>shell.py</code>, <code>web.py</code>, <code>cron.py</code><br>
+              Providers: <code>providers/anthropic_provider.py</code>, <code>openai_compat_provider.py</code><br>
+              Skills: <code>nanobot/skills/*</code>
+            </small>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="node core-node">
+            <div class="node-title">Message Protocol <span class="tag core">core</span></div>
+            <small><code>nanobot/bus/events.py</code>, <code>nanobot/bus/queue.py</code></small>
+          </div>
+          <div class="node core-node">
+            <div class="node-title">Turn Lifecycle <span class="tag core">core</span></div>
+            <small>
+              <code>nanobot/agent/loop.py</code><br>
+              restore -> compact -> command -> build -> run -> save -> respond
+            </small>
+          </div>
+          <div class="node core-node">
+            <div class="node-title">LLM / Tool Loop <span class="tag core">core</span></div>
+            <small>
+              <code>nanobot/agent/runner.py</code><br>
+              provider request, tool calls, stream hooks, context governance
+            </small>
+          </div>
+          <div class="node core-node">
+            <div class="node-title">Context + Continuity <span class="tag core">core</span></div>
+            <small>
+              <code>nanobot/agent/context.py</code><br>
+              <code>nanobot/session/manager.py</code>
+            </small>
+          </div>
+          <div class="node core-node">
+            <div class="node-title">Extension Contracts <span class="tag core">core host</span></div>
+            <small>
+              <code>agent/tools/{base,registry,loader,context}.py</code><br>
+              <code>providers/{base,registry,factory}.py</code><br>
+              <code>agent/hook.py</code>, <code>agent/progress_hook.py</code>
+            </small>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="node external-node">
+            <div class="node-title">Memory / Profile Services <span class="tag external">external</span></div>
+            <small>
+              <code>nanobot/memory_service/*</code><br>
+              Optional bridge only: <code>memory_service/bridge.py</code>
+            </small>
+          </div>
+          <div class="arrow">called through bounded packets</div>
+          <div class="node external-node">
+            <div class="node-title">Butler Product Brain <span class="tag external">external</span></div>
+            <small>
+              Task service, permission workflow, connector sync, semantic memory, product analytics.
+              These should call nanobot, not live inside the kernel.
+            </small>
+          </div>
+          <div class="node">
+            <div class="node-title">Known Pressure Points <span class="tag risk">watch</span></div>
+            <small>
+              <code>agent/loop.py</code>, <code>channels/websocket.py</code>,
+              <code>cli/commands.py</code>, <code>agent/memory.py</code>
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col section">
+        <div class="panel compact">
+          <h3>必须进 core</h3>
+          <ul>
+            <li>消息协议、队列和 turn lifecycle。</li>
+            <li>LLM/tool loop、tool/provider/hook contract。</li>
+            <li>session JSONL persistence 与可恢复性。</li>
+            <li>通用安全边界：路径、网络、sandbox 原语。</li>
+          </ul>
+        </div>
+        <div class="panel compact">
+          <h3>不能进 core</h3>
+          <ul>
+            <li>个人画像、复杂记忆策略、semantic/vector retrieval。</li>
+            <li>任务 DAG、workflow orchestration、日历/邮件业务逻辑。</li>
+            <li>WebUI 页面状态、IM 富文本、settings 表单。</li>
+            <li>Hermes/OpenClaw 式统一上层自治系统。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="butler-capability-map">
+      <h2>图 2：Personal AI Butler 能力图</h2>
+      <p class="section-note">
+        个人 AI 管家的目标能力可以很大，但每类能力都要明确归属。core 只提供运行时，产品能力通过外接服务、工具、技能、MCP 和 channel 扩展。
+      </p>
+
+      <div class="capability-grid">
+        <div class="panel capability">
+          <h3>Conversation / IM Surface</h3>
+          <table>
+            <tr><th>当前已有</th><td><code>channels/*</code>, <code>webui/*</code>, <code>channels/websocket.py</code></td></tr>
+            <tr><th>归属</th><td><span class="tag extension">extension</span> IM/WebUI 适配层</td></tr>
+            <tr><th>不要进 core</th><td>平台富文本、消息卡片、媒体预览、settings 页面。</td></tr>
+          </table>
+        </div>
+
+        <div class="panel capability">
+          <h3>Reasoning / Tool Execution</h3>
+          <table>
+            <tr><th>当前已有</th><td><code>agent/loop.py</code>, <code>agent/runner.py</code>, <code>agent/tools/*</code></td></tr>
+            <tr><th>归属</th><td><span class="tag core">core contracts</span> + <span class="tag extension">concrete tools</span></td></tr>
+            <tr><th>还缺</th><td>更稳定的 tool audit、failure taxonomy、场景级回放。</td></tr>
+          </table>
+        </div>
+
+        <div class="panel capability">
+          <h3>Memory / Profile / Preference</h3>
+          <table>
+            <tr><th>当前已有</th><td><code>agent/memory.py</code> local Dream；<code>memory_service/*</code> optional SQLite + FTS5 bridge。</td></tr>
+            <tr><th>归属</th><td><span class="tag external">external</span>；core 只接 bounded memory packet。</td></tr>
+            <tr><th>还缺</th><td>配置入口、typed memory API、用户审阅/纠错/删除、memory eval。</td></tr>
+          </table>
+        </div>
+
+        <div class="panel capability">
+          <h3>Proactive Tasks / Follow-up</h3>
+          <table>
+            <tr><th>当前已有</th><td><code>cron/service.py</code>, <code>heartbeat/service.py</code>, <code>agent/tools/cron.py</code>, <code>message.py</code></td></tr>
+            <tr><th>归属</th><td><span class="tag external">external task service</span> 调用 nanobot。</td></tr>
+            <tr><th>还缺</th><td>任务状态、重试、确认、失败恢复、任务审计。</td></tr>
+          </table>
+        </div>
+
+        <div class="panel capability">
+          <h3>Connectors / Actions</h3>
+          <table>
+            <tr><th>当前已有</th><td><code>agent/tools/mcp.py</code>, <code>web.py</code>, <code>search.py</code>, channel adapters, <code>bridge/*</code></td></tr>
+            <tr><th>归属</th><td><span class="tag extension">tools / MCP</span> 或独立 connector service。</td></tr>
+            <tr><th>不要进 core</th><td>每个 SaaS API、账号同步、业务对象模型。</td></tr>
+          </table>
+        </div>
+
+        <div class="panel capability">
+          <h3>Permission / Safety</h3>
+          <table>
+            <tr><th>当前已有</th><td><code>pairing/*</code>, channel allowFrom, <code>security/network.py</code>, tool path/sandbox checks。</td></tr>
+            <tr><th>归属</th><td><span class="tag core">safety primitives</span> + <span class="tag external">policy UX</span></td></tr>
+            <tr><th>还缺</th><td>按动作分级授权、确认、撤销、敏感工具审计。</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="section two-col">
+        <div class="panel compact">
+          <h3>当前已有能力</h3>
+          <ul>
+            <li>完整 Agent loop 与 tool execution。</li>
+            <li>多 provider、多 channel、WebUI 和 OpenAI-compatible API。</li>
+            <li>session persistence、local Dream memory、optional external memory bridge。</li>
+            <li>filesystem/shell/web/search/MCP/cron/message/subagent 等工具基础。</li>
+          </ul>
+        </div>
+        <div class="panel compact">
+          <h3>还缺的关键能力</h3>
+          <ul>
+            <li>产品化 external memory：可配置、可审阅、可纠错、可删除。</li>
+            <li>外部 task service：提醒、跟进、状态、失败恢复。</li>
+            <li>权限和审计：动作级授权、敏感操作确认。</li>
+            <li>场景级 eval：任务成功率、memory hit/miss、工具失败率。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="roadmap">
+      <h2>图 3：演进路线图</h2>
+      <p class="section-note">
+        每个阶段都要能独立验收。凡是会让 core 变重的能力，先做成外接服务、工具、MCP、skill 或 channel adapter。
+      </p>
+
+      <div class="roadmap">
+        <div class="phase">
+          <div class="phase-index">Phase 0</div>
+          <div>
+            <h3>守住 kernel 边界</h3>
+            <p>冻结 core vs extension 原则，新增能力必须先选择 channel/tool/skill/MCP/service 路径。</p>
+            <ul>
+              <li>进入 core：contract、hook、safety、session reliability。</li>
+              <li>外接：memory service、task service、WebUI surface、具体 connector。</li>
+            </ul>
+          </div>
+          <div class="panel compact">
+            <strong>验收</strong>
+            <p>新增 butler 能力不改 <code>agent/runner.py</code>，尽量不改 <code>agent/loop.py</code>。</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-index">Phase 1</div>
+          <div>
+            <h3>真实最小场景验证</h3>
+            <p>用一个 IM/WebUI、一个 provider、一个技能和一个提醒闭环验证个人工作助理。</p>
+            <ul>
+              <li>当前可用：<code>channels/websocket.py</code>, <code>providers/*</code>, <code>tools/filesystem.py</code>, <code>tools/cron.py</code>, <code>tools/message.py</code>。</li>
+              <li>缺口：权限确认、memory 默认启用策略、场景测试。</li>
+            </ul>
+          </div>
+          <div class="panel compact">
+            <strong>验收</strong>
+            <p>稳定对话、可靠工具调用、可接受延迟、session continuity 清楚、失败可恢复。</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-index">Phase 2</div>
+          <div>
+            <h3>Memory productization</h3>
+            <p>把 <code>memory_service/*</code> 从可注入桥推进到可配置、可审计、默认关闭的产品能力。</p>
+            <ul>
+              <li>进入 core：optional bridge hook 和 bounded memory packet。</li>
+              <li>外接增强：typed memory API、审阅/纠错/删除、memory eval。</li>
+            </ul>
+          </div>
+          <div class="panel compact">
+            <strong>验收</strong>
+            <p>跨 session recall 可测，误召回可发现，关闭 memory 后 core 行为不变。</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-index">Phase 3</div>
+          <div>
+            <h3>Task / proactive butler layer</h3>
+            <p>建立外部 task service，管理提醒、跟进、重试、确认、审计，不让 workflow 进入 AgentLoop。</p>
+            <ul>
+              <li>当前基础：<code>cron/service.py</code>, <code>heartbeat/service.py</code>, <code>tools/cron.py</code>, <code>tools/message.py</code>。</li>
+              <li>不进 core：任务 DAG、调度策略、业务规则。</li>
+            </ul>
+          </div>
+          <div class="panel compact">
+            <strong>验收</strong>
+            <p>2-3 个长期任务稳定运行，例如提醒、每日简报、等待用户回复后的跟进。</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-index">Phase 4</div>
+          <div>
+            <h3>Connector and action ecosystem</h3>
+            <p>通过 MCP/tools 接应用，避免 nanobot 变成集成巨石。</p>
+            <ul>
+              <li>进入 core：tool contract、sandbox/security、audit hook。</li>
+              <li>外接：calendar/email/todo/files/browser 等 connectors。</li>
+            </ul>
+          </div>
+          <div class="panel compact">
+            <strong>验收</strong>
+            <p>新增 connector 不改 <code>agent/loop.py</code> / <code>agent/runner.py</code>。</p>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-index">Phase 5</div>
+          <div>
+            <h3>Evaluation / observability</h3>
+            <p>让 personal butler 可测、可回滚、可迭代。</p>
+            <ul>
+              <li>当前基础：pytest、hooks、progress events、logs。</li>
+              <li>外接增强：scenario replay、memory hit/miss、任务成功率、工具失败分类、latency budget。</li>
+            </ul>
+          </div>
+          <div class="panel compact">
+            <strong>验收</strong>
+            <p>每个真实场景可自动回放，失败能定位到 provider/tool/memory/channel/task 层。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="first-scenario">
+      <h2>第一阶段最值得验证的真实使用场景</h2>
+      <div class="scenario">
+        <h3>个人工作助理闭环</h3>
+        <p>
+          用户在一个 IM 或 WebUI 中要求 nanobot 读取/总结本地工作材料，明确表达一个偏好，
+          设置一个提醒；到时间后，nanobot 主动发回简短结果，并在下一轮能引用该偏好。
+        </p>
+        <div class="two-col">
+          <div>
+            <h3>要覆盖的当前模块</h3>
+            <ul>
+              <li><code>channels/websocket.py</code> 或一个稳定 IM channel。</li>
+              <li><code>providers/*</code> 的一个实际 provider。</li>
+              <li><code>agent/tools/filesystem.py</code>, <code>cron.py</code>, <code>message.py</code>。</li>
+              <li><code>session/manager.py</code> 和 optional <code>memory_service/bridge.py</code>。</li>
+            </ul>
+          </div>
+          <div>
+            <h3>验收指标</h3>
+            <ul>
+              <li>用户不需要理解内部模块也能完成任务。</li>
+              <li>工具调用和提醒投递稳定，有明确失败反馈。</li>
+              <li>偏好 recall 可解释、可关闭、可纠错。</li>
+              <li>新增场景不要求改 <code>agent/runner.py</code>。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section maintenance" id="maintenance">
+      <h2>维护说明</h2>
+      <p class="section-note">
+        这个文件是单文件静态 HTML，可直接在浏览器打开。后续维护时只追加或调整已有分区，不需要构建步骤。
+      </p>
+      <div class="two-col">
+        <div>
+          <h3>更新时先检查</h3>
+          <ul>
+            <li>新增能力是否真的属于 core。</li>
+            <li>是否能通过 <code>channels/</code>, <code>tools/</code>, skills, MCP 或 external service 实现。</li>
+            <li>是否新增了 <code>agent/loop.py</code> 或 <code>agent/runner.py</code> 的产品分支。</li>
+            <li>是否有对应场景验收和回归测试。</li>
+          </ul>
+        </div>
+        <div>
+          <h3>优先拆重的位置</h3>
+          <ul>
+            <li><code>channels/websocket.py</code>：WebUI HTTP surface 可拆 sessions/settings/media/transcript。</li>
+            <li><code>agent/memory.py</code>：local store、Consolidator、Dream service 可分边界。</li>
+            <li><code>cli/commands.py</code>：gateway runtime 组装逻辑避免继续膨胀。</li>
+            <li><code>agent/loop.py</code>：新产品逻辑优先迁到 hook/service/tool。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
