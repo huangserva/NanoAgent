@@ -12,6 +12,7 @@ class RequestContext:
     chat_id: str
     message_id: str | None = None
     session_key: str | None = None
+    sender_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -32,4 +33,5 @@ class ToolContext:
     file_state_store: Any = field(default=None)
     provider_snapshot_loader: Callable[[], Any] | None = None
     image_generation_provider_configs: dict[str, Any] | None = None
+    external_memory: Any = None
     timezone: str = "UTC"

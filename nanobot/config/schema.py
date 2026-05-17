@@ -114,6 +114,7 @@ class ExternalMemoryConfig(Base):
     db_path: str | None = None
     retrieval_limit: int = Field(default=3, ge=1, le=20)
     packet_char_limit: int = Field(default=2000, ge=256, le=8000)
+    injection_mode: Literal["tools_only", "auto_inject", "both"] = "both"
 
 
 class AgentDefaults(Base):

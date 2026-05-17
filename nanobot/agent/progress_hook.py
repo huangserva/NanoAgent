@@ -33,6 +33,7 @@ class AgentProgressHook(AgentHook):
         message_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         session_key: str | None = None,
+        sender_id: str | None = None,
         tool_hint_max_length: int = 40,
         set_tool_context: Callable[..., None] | None = None,
         on_iteration: Callable[[int], None] | None = None,
@@ -46,6 +47,7 @@ class AgentProgressHook(AgentHook):
         self._message_id = message_id
         self._metadata = metadata or {}
         self._session_key = session_key
+        self._sender_id = sender_id
         self._tool_hint_max_length = tool_hint_max_length
         self._set_tool_context = set_tool_context
         self._on_iteration = on_iteration
@@ -131,6 +133,7 @@ class AgentProgressHook(AgentHook):
                 self._message_id,
                 self._metadata,
                 session_key=self._session_key,
+                sender_id=self._sender_id,
             )
 
     async def emit_reasoning(self, reasoning_content: str | None) -> None:

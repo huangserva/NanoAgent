@@ -364,6 +364,7 @@ class AgentLoop:
                     workspace=config.workspace_path,
                     retrieval_limit=em.retrieval_limit,
                     packet_char_limit=em.packet_char_limit,
+                    injection_mode=em.injection_mode,
                 )
         return cls(
             bus=bus,
@@ -488,6 +489,7 @@ class AgentLoop:
             sessions=self.sessions,
             provider_snapshot_loader=self._provider_snapshot_loader,
             image_generation_provider_configs=self._image_generation_provider_configs,
+            external_memory=self.external_memory,
             timezone=self.context.timezone or "UTC",
         )
         loader = ToolLoader()
@@ -528,6 +530,7 @@ class AgentLoop:
         self, channel: str, chat_id: str,
         message_id: str | None = None, metadata: dict | None = None,
         session_key: str | None = None,
+        sender_id: str | None = None,
     ) -> None:
         """Update context for all tools that need routing info."""
         from nanobot.agent.tools.context import ContextAware, RequestContext
@@ -544,6 +547,7 @@ class AgentLoop:
             chat_id=chat_id,
             message_id=message_id,
             session_key=effective_key,
+            sender_id=sender_id,
             metadata=dict(metadata or {}),
         )
 
@@ -722,6 +726,7 @@ class AgentLoop:
         message_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         session_key: str | None = None,
+        sender_id: str | None = None,
         pending_queue: asyncio.Queue | None = None,
     ) -> tuple[str | None, list[str], list[dict], str, bool]:
         """Run the agent iteration loop.
@@ -744,6 +749,7 @@ class AgentLoop:
             message_id=message_id,
             metadata=metadata,
             session_key=session_key,
+            sender_id=sender_id,
             tool_hint_max_length=self.tool_hint_max_length,
             set_tool_context=self._set_tool_context,
             on_iteration=lambda iteration: setattr(self, "_current_iteration", iteration),
@@ -1136,7 +1142,7 @@ class AgentLoop:
             self.sessions.save(session)
         self._set_tool_context(
             channel, chat_id, msg.metadata.get("message_id"),
-            msg.metadata, session_key=key,
+            msg.metadata, session_key=key, sender_id=msg.sender_id,
         )
         _hist_kwargs: dict[str, Any] = {
             "max_messages": self._max_messages,
@@ -1162,6 +1168,7 @@ class AgentLoop:
             message_id=msg.metadata.get("message_id"),
             metadata=msg.metadata,
             session_key=key,
+            sender_id=msg.sender_id,
             pending_queue=pending_queue,
         )
         wall_done = time.time()
@@ -1381,6 +1388,7 @@ class AgentLoop:
             ctx.msg.metadata.get("message_id"),
             ctx.msg.metadata,
             session_key=ctx.session_key,
+            sender_id=ctx.msg.sender_id,
         )
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
@@ -1392,7 +1400,13 @@ class AgentLoop:
             "include_timestamps": True,
         }
         ctx.history = ctx.session.get_history(**_hist_kwargs)
-        ctx.external_memory_context = self._retrieve_external_memory(ctx)
+        if (
+            self.external_memory is not None
+            and self.external_memory.injection_mode in {"auto_inject", "both"}
+        ):
+            ctx.external_memory_context = self._retrieve_external_memory(ctx)
+        else:
+            ctx.external_memory_context = None
 
         ctx.initial_messages = self._build_initial_messages(
             ctx.msg,
@@ -1426,6 +1440,7 @@ class AgentLoop:
             message_id=ctx.msg.metadata.get("message_id"),
             metadata=ctx.msg.metadata,
             session_key=ctx.session_key,
+            sender_id=ctx.msg.sender_id,
             pending_queue=ctx.pending_queue,
         )
         final_content, tools_used, all_msgs, stop_reason, had_injections = result

@@ -121,6 +121,7 @@ class ExternalMemoryBridge:
         packet_char_limit: int = 2_000,
         result_char_limit: int = 420,
         event_char_limit: int = 4_000,
+        injection_mode: str = "both",
     ) -> None:
         self._service: MemoryService | None = service
         self.workspace = workspace
@@ -128,6 +129,7 @@ class ExternalMemoryBridge:
         self.packet_char_limit = max(256, packet_char_limit)
         self.result_char_limit = max(120, result_char_limit)
         self.event_char_limit = max(512, event_char_limit)
+        self.injection_mode = injection_mode
 
     @property
     def service(self) -> MemoryService:
@@ -191,6 +193,77 @@ class ExternalMemoryBridge:
 
         if not lines:
             return None
+        return truncate_text("\n".join(lines), self.packet_char_limit)
+
+    def recall(
+        self,
+        query: str,
+        *,
+        sender_id: str | None,
+        memory_type: str | None = None,
+        limit: int | None = None,
+    ) -> str:
+        """Return a markdown-formatted recall packet for tool-driven retrieval."""
+        query = query.strip()
+        if not query:
+            return "No matching memories."
+
+        effective_limit = max(1, min(int(limit or self.retrieval_limit), 20))
+        user_id = self.subject_key(sender_id)
+        typed_results = []
+        event_results = []
+        try:
+            typed_results = self.service.search_typed_memories(
+                SearchRequest(
+                    user_id=user_id,
+                    query=query,
+                    limit=max(effective_limit, 20) if memory_type else effective_limit,
+                )
+            )
+            if memory_type:
+                typed_results = [
+                    memory for memory in typed_results
+                    if memory.memory_type == memory_type
+                ]
+        except Exception:
+            logger.exception("External typed memory recall failed")
+
+        try:
+            event_results = self.service.search(
+                SearchRequest(
+                    user_id=user_id,
+                    query=query,
+                    limit=effective_limit,
+                )
+            )
+        except Exception:
+            logger.exception("External event memory recall failed")
+
+        lines: list[str] = []
+        if typed_results:
+            lines.append("## Structured Memory")
+        for memory in typed_results[:effective_limit]:
+            text = truncate_text(memory.text, self.result_char_limit)
+            evidence = memory.evidence_event_id or "unknown"
+            lines.append(
+                f"- type={memory.memory_type} confidence={memory.confidence:.2f} "
+                f"evidence={evidence} updated={memory.updated_at}: {text}"
+            )
+
+        if event_results:
+            if lines:
+                lines.append("")
+            lines.append("## Related Events")
+        for result in event_results[:effective_limit]:
+            summary = self._format_result_content(result.content)
+            summary = truncate_text(summary, self.result_char_limit)
+            lines.append(
+                f"- [{result.created_at}] event={result.id} "
+                f"source={result.source_type} type={result.event_type}: {summary}"
+            )
+
+        if not lines:
+            return "No matching memories."
         return truncate_text("\n".join(lines), self.packet_char_limit)
 
     def record_turn(self, ctx: TurnContext) -> None:
