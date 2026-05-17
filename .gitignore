@@ -10,6 +10,10 @@
 # Claude / AI assistant artifacts
 docs/superpowers/
 docs/plans/
+.claude/
+.codex/
+.hive/
+.codex-task-*
 
 # webui (monorepo frontend)
 webui/node_modules/
