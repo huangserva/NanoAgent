@@ -448,48 +448,93 @@ describe("useNanobotStream", () => {
     });
   });
 
-  it("absorbs non-streamed final answers into the preceding reasoning placeholder", () => {
+  it("replaces the streamed assistant row when a final message arrives after stream_end", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useNanobotStream("chat-final-reasoning", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useNanobotStream("chat-final-after-stream", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
     act(() => {
-      fake.emit("chat-final-reasoning", {
+      fake.emit("chat-final-after-stream", {
+        event: "delta",
+        chat_id: "chat-final-after-stream",
+        text: "Hello",
+      });
+      fake.emit("chat-final-after-stream", {
+        event: "delta",
+        chat_id: "chat-final-after-stream",
+        text: " world",
+      });
+      fake.emit("chat-final-after-stream", {
+        event: "stream_end",
+        chat_id: "chat-final-after-stream",
+      });
+      fake.emit("chat-final-after-stream", {
         event: "message",
-        chat_id: "chat-final-reasoning",
-        text: "web_search({\"query\":\"hermes\"})",
-        kind: "tool_hint",
+        chat_id: "chat-final-after-stream",
+        text: "Hello world",
       });
-      fake.emit("chat-final-reasoning", {
-        event: "reasoning_delta",
-        chat_id: "chat-final-reasoning",
-        text: "Got results; now summarize.",
-      });
-      fake.emit("chat-final-reasoning", {
-        event: "reasoning_end",
-        chat_id: "chat-final-reasoning",
-      });
-      fake.emit("chat-final-reasoning", {
-        event: "message",
-        chat_id: "chat-final-reasoning",
-        text: "Hermes is an open-source agent project.",
-      });
-      fake.emit("chat-final-reasoning", {
+      fake.emit("chat-final-after-stream", {
         event: "turn_end",
-        chat_id: "chat-final-reasoning",
+        chat_id: "chat-final-after-stream",
       });
     });
 
-    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0]).toMatchObject({
-      role: "tool",
-      kind: "trace",
-    });
-    expect(result.current.messages[1]).toMatchObject({
       role: "assistant",
-      content: "Hermes is an open-source agent project.",
-      reasoning: "Got results; now summarize.",
+      content: "Hello world",
+    });
+    expect(result.current.messages[0].isStreaming).toBe(false);
+  });
+
+  it("merges a post-stream final markdown message into the live row without remounting it", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-final-md", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-final-md", {
+        event: "reasoning_delta",
+        chat_id: "chat-final-md",
+        text: "Plan.",
+      });
+      fake.emit("chat-final-md", {
+        event: "reasoning_end",
+        chat_id: "chat-final-md",
+      });
+      fake.emit("chat-final-md", {
+        event: "delta",
+        chat_id: "chat-final-md",
+        text: "The **bo",
+      });
+    });
+    const liveId = result.current.messages[0].id;
+
+    act(() => {
+      fake.emit("chat-final-md", {
+        event: "delta",
+        chat_id: "chat-final-md",
+        text: "ld** answer",
+      });
+      fake.emit("chat-final-md", {
+        event: "stream_end",
+        chat_id: "chat-final-md",
+      });
+      fake.emit("chat-final-md", {
+        event: "message",
+        chat_id: "chat-final-md",
+        text: "The **bold** answer",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      id: liveId,
+      role: "assistant",
+      content: "The **bold** answer",
+      reasoning: "Plan.",
       reasoningStreaming: false,
       isStreaming: false,
     });
