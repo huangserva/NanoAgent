@@ -46,7 +46,8 @@
     },
     "nav": {
       "general": "一般",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "外部記憶"
     },
     "sections": {
       "interface": "介面",
@@ -125,6 +126,44 @@
         "baseUrlRequired": "SearXNG 需要 Base URL。",
         "missingCredential": "填寫必要憑證後才能儲存。",
         "saveHint": "變更會套用到新的 web search 請求。"
+      }
+    },
+    "memory": {
+      "title": "外部記憶",
+      "description": "設定執行時記憶檢索。",
+      "notAvailable": "外部記憶已停用",
+      "notAvailableDescription": "在上方啟用並重新啟動後可使用檢查器。",
+      "fields": {
+        "enabled": "啟用",
+        "injectionMode": "注入模式",
+        "retrievalLimit": "檢索數量",
+        "packetCharLimit": "封包字元上限",
+        "dbPath": "資料庫路徑"
+      },
+      "injectionModes": {
+        "tools_only": "僅工具",
+        "auto_inject": "自動注入",
+        "both": "兩者"
+      },
+      "inspector": {
+        "title": "類型化記憶",
+        "description": "查看目前 WebUI 使用者的活躍結構化記憶。",
+        "empty": "沒有記憶。",
+        "refresh": "重新整理",
+        "filters": {
+          "all": "全部",
+          "preference": "偏好",
+          "profile_fact": "個人事實",
+          "task_state": "任務狀態",
+          "project_fact": "專案事實"
+        },
+        "row": {
+          "confidence": "信心值",
+          "updated": "更新",
+          "evidence": "證據",
+          "retire": "停用",
+          "retireConfirm": "停用這筆記憶？"
+        }
       }
     }
   },

@@ -86,6 +86,7 @@ export class NanobotClient {
   private currentUrl: string;
   private status_: ConnectionStatus = "idle";
   private readyChatId: string | null = null;
+  private clientId_: string | null = null;
   // Set by ``close()`` so the onclose handler knows the drop was intentional
   // and must not schedule a reconnect or flip status back to "reconnecting".
   private intentionallyClosed = false;
@@ -104,6 +105,10 @@ export class NanobotClient {
 
   get defaultChatId(): string | null {
     return this.readyChatId;
+  }
+
+  get clientId(): string | null {
+    return this.clientId_;
   }
 
   /** Swap the URL (e.g. after fetching a fresh token) then reconnect. */
@@ -294,6 +299,7 @@ export class NanobotClient {
 
     if (parsed.event === "ready") {
       this.readyChatId = parsed.chat_id;
+      this.clientId_ = parsed.client_id;
       this.knownChats.add(parsed.chat_id);
       return;
     }

@@ -46,7 +46,8 @@
     },
     "nav": {
       "general": "Chung",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "Bộ nhớ ngoài"
     },
     "sections": {
       "interface": "Giao diện",
@@ -125,6 +126,44 @@
         "baseUrlRequired": "SearXNG cần Base URL.",
         "missingCredential": "Thêm thông tin bắt buộc trước khi lưu.",
         "saveHint": "Thay đổi áp dụng cho các yêu cầu web search mới."
+      }
+    },
+    "memory": {
+      "title": "Bộ nhớ ngoài",
+      "description": "Cấu hình truy xuất bộ nhớ lúc chạy.",
+      "notAvailable": "Bộ nhớ ngoài đang tắt",
+      "notAvailableDescription": "Bật ở trên và khởi động lại để dùng trình xem.",
+      "fields": {
+        "enabled": "Bật",
+        "injectionMode": "Chế độ chèn",
+        "retrievalLimit": "Giới hạn truy xuất",
+        "packetCharLimit": "Giới hạn gói",
+        "dbPath": "Đường dẫn DB"
+      },
+      "injectionModes": {
+        "tools_only": "Chỉ công cụ",
+        "auto_inject": "Tự chèn",
+        "both": "Cả hai"
+      },
+      "inspector": {
+        "title": "Bộ nhớ có kiểu",
+        "description": "Xem bộ nhớ có cấu trúc đang hoạt động của người dùng WebUI này.",
+        "empty": "Không có bộ nhớ.",
+        "refresh": "Làm mới",
+        "filters": {
+          "all": "Tất cả",
+          "preference": "Sở thích",
+          "profile_fact": "Hồ sơ",
+          "task_state": "Trạng thái việc",
+          "project_fact": "Dự án"
+        },
+        "row": {
+          "confidence": "Tin cậy",
+          "updated": "Cập nhật",
+          "evidence": "Bằng chứng",
+          "retire": "Ngưng",
+          "retireConfirm": "Ngưng bộ nhớ này?"
+        }
       }
     }
   },

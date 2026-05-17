@@ -1,6 +1,12 @@
 import type {
   ChatSummary,
   FeishuSettingsUpdate,
+  MemorySettingsResponse,
+  MemorySettingsUpdate,
+  MemorySettingsUpdateResponse,
+  MemoryTypedListResponse,
+  MemoryTypedRetireResponse,
+  MemoryType,
   ProviderSettingsUpdate,
   SettingsPayload,
   SettingsUpdate,
@@ -192,6 +198,61 @@ export async function updateFeishuSettings(
   if (update.domain !== undefined) query.set("domain", update.domain);
   return request<SettingsPayload>(
     `${base}/api/settings/feishu/update?${query}`,
+    token,
+  );
+}
+
+export async function fetchMemorySettings(
+  token: string,
+  base: string = "",
+): Promise<MemorySettingsResponse> {
+  return request<MemorySettingsResponse>(`${base}/api/settings/memory`, token);
+}
+
+export async function updateMemorySettings(
+  token: string,
+  update: MemorySettingsUpdate,
+  base: string = "",
+): Promise<MemorySettingsUpdateResponse> {
+  const query = new URLSearchParams();
+  if (update.enabled !== undefined) query.set("enabled", String(update.enabled));
+  if (update.injectionMode !== undefined) query.set("injection_mode", update.injectionMode);
+  if (update.retrievalLimit !== undefined) query.set("retrieval_limit", String(update.retrievalLimit));
+  if (update.packetCharLimit !== undefined) query.set("packet_char_limit", String(update.packetCharLimit));
+  if (update.dbPath !== undefined) query.set("db_path", update.dbPath ?? "");
+  return request<MemorySettingsUpdateResponse>(
+    `${base}/api/settings/memory/update?${query}`,
+    token,
+  );
+}
+
+export async function listMemoryTyped(
+  token: string,
+  opts: { memoryType?: MemoryType | ""; limit?: number; clientId?: string | null } = {},
+  base: string = "",
+): Promise<MemoryTypedListResponse> {
+  const query = new URLSearchParams();
+  if (opts.memoryType) query.set("memory_type", opts.memoryType);
+  if (opts.limit !== undefined) query.set("limit", String(opts.limit));
+  if (opts.clientId) query.set("client_id", opts.clientId);
+  const suffix = query.toString();
+  return request<MemoryTypedListResponse>(
+    `${base}/api/memory/typed${suffix ? `?${suffix}` : ""}`,
+    token,
+  );
+}
+
+export async function retireMemoryTyped(
+  token: string,
+  id: string,
+  opts: { status?: "inactive" | "deleted"; reason?: string } = {},
+  base: string = "",
+): Promise<MemoryTypedRetireResponse> {
+  const query = new URLSearchParams();
+  if (opts.status !== undefined) query.set("status", opts.status);
+  if (opts.reason !== undefined) query.set("reason", opts.reason);
+  return request<MemoryTypedRetireResponse>(
+    `${base}/api/memory/typed/${encodeURIComponent(id)}/retire?${query}`,
     token,
   );
 }

@@ -42,6 +42,10 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   fetchSettings,
+  fetchMemorySettings,
+  listMemoryTyped,
+  retireMemoryTyped,
+  updateMemorySettings,
   updateFeishuSettings,
   updateProviderSettings,
   updateSettings,
@@ -52,11 +56,15 @@ import { useClient } from "@/providers/ClientProvider";
 import type {
   FeishuSettings,
   FeishuSettingsUpdate,
+  MemoryInjectionMode,
+  MemorySettings,
+  MemoryType,
+  TypedMemoryRecord,
   SettingsPayload,
   WebSearchSettingsUpdate,
 } from "@/lib/types";
 
-type SettingsSectionKey = "general" | "byok" | "feishu";
+type SettingsSectionKey = "general" | "byok" | "feishu" | "memory";
 type ByokPaneKey = "llm" | "web-search";
 type FeishuSecretKey = "appSecret" | "encryptKey" | "verificationToken";
 
@@ -159,7 +167,7 @@ export function SettingsView({
   isRestarting = false,
 }: SettingsViewProps) {
   const { t } = useTranslation();
-  const { token } = useClient();
+  const { client, token } = useClient();
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -574,7 +582,7 @@ export function SettingsView({
                   onResetWebSearchDraft={resetWebSearchDraft}
                   onSaveWebSearch={saveWebSearch}
                 />
-              ) : (
+              ) : activeSection === "feishu" ? (
                 <FeishuSettingsPanel
                   settings={getFeishuSettings(settings)}
                   form={feishuForm}
@@ -588,6 +596,8 @@ export function SettingsView({
                   onToggleSecretEditing={toggleFeishuSecretEditing}
                   onSave={saveFeishu}
                 />
+              ) : (
+                <MemorySettingsPanel token={token} clientId={client.clientId} />
               )}
             </div>
           ) : null}
@@ -601,6 +611,7 @@ const SETTINGS_NAV_ITEMS = [
   { key: "general", icon: Settings },
   { key: "byok", icon: KeyRound },
   { key: "feishu", icon: MessageCircle },
+  { key: "memory", icon: Brain },
 ] as const;
 
 function SettingsSidebar({
@@ -1191,6 +1202,308 @@ function FeishuSettingsPanel({
       </section>
     </div>
   );
+}
+
+const MEMORY_FILTERS: Array<{ key: MemoryType | ""; labelKey: string }> = [
+  { key: "", labelKey: "settings.memory.inspector.filters.all" },
+  { key: "preference", labelKey: "settings.memory.inspector.filters.preference" },
+  { key: "profile_fact", labelKey: "settings.memory.inspector.filters.profile_fact" },
+  { key: "task_state", labelKey: "settings.memory.inspector.filters.task_state" },
+  { key: "project_fact", labelKey: "settings.memory.inspector.filters.project_fact" },
+];
+
+export function MemorySettingsPanel({
+  token,
+  clientId,
+}: {
+  token: string;
+  clientId: string | null;
+}) {
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState<MemorySettings | null>(null);
+  const [available, setAvailable] = useState(false);
+  const [form, setForm] = useState<MemorySettings | null>(null);
+  const [memories, setMemories] = useState<TypedMemoryRecord[]>([]);
+  const [filter, setFilter] = useState<MemoryType | "">("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [retiringId, setRetiringId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [requiresRestart, setRequiresRestart] = useState(false);
+
+  const loadSettings = useCallback(async () => {
+    const payload = await fetchMemorySettings(token);
+    setSettings(payload.memory);
+    setForm(payload.memory);
+    setAvailable(payload.available);
+    setRequiresRestart(payload.memory.requiresRestart);
+  }, [token]);
+
+  const refreshMemories = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const payload = await listMemoryTyped(token, {
+        memoryType: filter,
+        limit: 50,
+        clientId,
+      });
+      setAvailable(payload.available);
+      setMemories(payload.memories);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [clientId, filter, token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    loadSettings()
+      .then(() => {
+        if (!cancelled) setError(null);
+      })
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (!available) {
+      setMemories([]);
+      return;
+    }
+    void refreshMemories();
+  }, [available, refreshMemories]);
+
+  const dirty = !!settings && !!form && (
+    settings.enabled !== form.enabled ||
+    settings.injectionMode !== form.injectionMode ||
+    settings.retrievalLimit !== form.retrievalLimit ||
+    settings.packetCharLimit !== form.packetCharLimit
+  );
+
+  const save = async () => {
+    if (!form || saving || !dirty) return;
+    setSaving(true);
+    try {
+      const payload = await updateMemorySettings(token, {
+        enabled: form.enabled,
+        injectionMode: form.injectionMode,
+        retrievalLimit: form.retrievalLimit,
+        packetCharLimit: form.packetCharLimit,
+      });
+      setSettings(payload.memory);
+      setForm(payload.memory);
+      setAvailable(payload.available);
+      setRequiresRestart(payload.requires_restart);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const retire = async (memory: TypedMemoryRecord) => {
+    if (retiringId) return;
+    if (!window.confirm(t("settings.memory.inspector.row.retireConfirm"))) return;
+    setRetiringId(memory.id);
+    try {
+      await retireMemoryTyped(token, memory.id, {
+        status: "inactive",
+        reason: "retired from WebUI",
+      });
+      await refreshMemories();
+    } catch (err) {
+      setError((err as Error).message ?? "Failed to retire memory");
+    } finally {
+      setRetiringId(null);
+    }
+  };
+
+  if (loading || !form) {
+    return (
+      <SettingsGroup>
+        <SettingsRow title={t("settings.status.loading")}>
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </SettingsRow>
+      </SettingsGroup>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {error ? (
+        <div className="rounded-[18px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+          {error}
+        </div>
+      ) : null}
+      <section>
+        <SettingsSectionTitle>{t("settings.memory.title")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={t("settings.memory.fields.enabled")}
+            description={t("settings.memory.description")}
+          >
+            <TogglePill
+              checked={form.enabled}
+              onChange={(enabled) => setForm((prev) => prev ? { ...prev, enabled } : prev)}
+            />
+          </SettingsRow>
+          <SettingsRow title={t("settings.memory.fields.injectionMode")}>
+            <ProviderPicker
+              providers={[
+                { name: "tools_only", label: t("settings.memory.injectionModes.tools_only") },
+                { name: "auto_inject", label: t("settings.memory.injectionModes.auto_inject") },
+                { name: "both", label: t("settings.memory.injectionModes.both") },
+              ]}
+              value={form.injectionMode}
+              emptyLabel={t("settings.values.notAvailable")}
+              onChange={(injectionMode) =>
+                setForm((prev) => prev ? { ...prev, injectionMode: injectionMode as MemoryInjectionMode } : prev)
+              }
+            />
+          </SettingsRow>
+          <SettingsRow title={t("settings.memory.fields.retrievalLimit")}>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={form.retrievalLimit}
+              onChange={(event) =>
+                setForm((prev) => prev ? { ...prev, retrievalLimit: Number(event.target.value) } : prev)
+              }
+              className="h-9 w-[120px] rounded-full text-[13px]"
+            />
+          </SettingsRow>
+          <SettingsRow title={t("settings.memory.fields.packetCharLimit")}>
+            <Input
+              type="number"
+              min={256}
+              max={8000}
+              value={form.packetCharLimit}
+              onChange={(event) =>
+                setForm((prev) => prev ? { ...prev, packetCharLimit: Number(event.target.value) } : prev)
+              }
+              className="h-9 w-[140px] rounded-full text-[13px]"
+            />
+          </SettingsRow>
+          <SettingsRow title={t("settings.memory.fields.dbPath")}>
+            <span className="max-w-[360px] truncate text-right text-[13px] text-muted-foreground">
+              {form.dbPath || t("settings.values.notAvailable")}
+            </span>
+          </SettingsRow>
+          {(dirty || saving || requiresRestart) ? (
+            <SettingsFooter
+              dirty={dirty}
+              saving={saving}
+              saved={requiresRestart && !dirty}
+              onSave={save}
+            />
+          ) : null}
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <SettingsSectionTitle>{t("settings.memory.inspector.title")}</SettingsSectionTitle>
+          {available ? (
+            <Button size="sm" variant="outline" onClick={refreshMemories} disabled={refreshing} className="rounded-full">
+              {refreshing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+              {t("settings.memory.inspector.refresh")}
+            </Button>
+          ) : null}
+        </div>
+        {!available ? (
+          <div className="rounded-[22px] border border-dashed border-border/65 bg-card/55 px-5 py-6">
+            <div className="text-[14px] font-medium text-foreground">{t("settings.memory.notAvailable")}</div>
+            <p className="mt-1 text-[13px] leading-6 text-muted-foreground">
+              {t("settings.memory.notAvailableDescription")}
+            </p>
+          </div>
+        ) : (
+          <SettingsGroup>
+            <div className="space-y-3 px-4 py-3.5 sm:px-5">
+              <p className="text-[13px] leading-6 text-muted-foreground">
+                {t("settings.memory.inspector.description")}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {MEMORY_FILTERS.map((item) => (
+                  <button
+                    key={item.key || "all"}
+                    type="button"
+                    onClick={() => setFilter(item.key)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[12px] font-medium transition-colors",
+                      filter === item.key
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t(item.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {memories.length === 0 ? (
+              <div className="px-4 py-6 text-[13px] text-muted-foreground sm:px-5">
+                {t("settings.memory.inspector.empty")}
+              </div>
+            ) : (
+              memories.map((memory) => (
+                <div key={memory.id} className="flex items-start justify-between gap-4 px-4 py-3.5 sm:px-5">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground">
+                        {t(`settings.memory.inspector.filters.${memory.memory_type}`)}
+                      </span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {t("settings.memory.inspector.row.confidence")}: {memory.confidence.toFixed(2)}
+                      </span>
+                      <span className="text-[12px] text-muted-foreground">
+                        {t("settings.memory.inspector.row.updated")}: {formatMemoryDate(memory.updated_at)}
+                      </span>
+                    </div>
+                    <div className="line-clamp-2 text-[13px] leading-6 text-foreground">{memory.text}</div>
+                    <div className="text-[12px] text-muted-foreground">
+                      {t("settings.memory.inspector.row.evidence")}: {shortId(memory.evidence_event_id)}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void retire(memory)}
+                    disabled={retiringId === memory.id}
+                    className="shrink-0 rounded-full"
+                  >
+                    {t("settings.memory.inspector.row.retire")}
+                  </Button>
+                </div>
+              ))
+            )}
+          </SettingsGroup>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function shortId(value?: string | null): string {
+  return value ? value.slice(0, 8) : "-";
+}
+
+function formatMemoryDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function SecretSettingsInput({

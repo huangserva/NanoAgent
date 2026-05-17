@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   deleteSession,
+  fetchMemorySettings,
   fetchWebuiThread,
   listSessions,
+  listMemoryTyped,
   listSlashCommands,
+  retireMemoryTyped,
+  updateMemorySettings,
   updateFeishuSettings,
   updateProviderSettings,
   updateSettings,
@@ -103,6 +107,62 @@ describe("webui API helpers", () => {
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/settings/feishu/update?enabled=true&app_id=cli_test&app_secret=app-secret&encrypt_key=encrypt-secret&verification_token=verify-token&allow_from=ou_1&allow_from=*&group_policy=open&streaming=false&domain=lark",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("fetches memory settings", async () => {
+    await fetchMemorySettings("tok");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/settings/memory",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("serializes memory settings updates", async () => {
+    await updateMemorySettings("tok", {
+      enabled: true,
+      injectionMode: "both",
+      retrievalLimit: 5,
+      packetCharLimit: 3000,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/settings/memory/update?enabled=true&injection_mode=both&retrieval_limit=5&packet_char_limit=3000",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("serializes typed memory list filters", async () => {
+    await listMemoryTyped("tok", {
+      memoryType: "preference",
+      limit: 25,
+      clientId: "client-a",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/memory/typed?memory_type=preference&limit=25&client_id=client-a",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("serializes typed memory retire requests", async () => {
+    await retireMemoryTyped("tok", "mem/1", {
+      status: "inactive",
+      reason: "done",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/memory/typed/mem%2F1/retire?status=inactive&reason=done",
       expect.objectContaining({
         headers: { Authorization: "Bearer tok" },
       }),

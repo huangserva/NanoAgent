@@ -125,6 +125,7 @@ export interface SettingsPayload {
     }>;
   };
   feishu: FeishuSettings;
+  memory: MemorySettings;
   runtime: {
     config_path: string;
   };
@@ -170,6 +171,65 @@ export interface FeishuSettingsUpdate {
   groupPolicy?: "open" | "mention";
   streaming?: boolean;
   domain?: "feishu" | "lark";
+}
+
+export type MemoryType = "preference" | "profile_fact" | "task_state" | "project_fact";
+export type MemoryInjectionMode = "tools_only" | "auto_inject" | "both";
+
+export interface MemorySettings {
+  enabled: boolean;
+  injectionMode: MemoryInjectionMode;
+  retrievalLimit: number;
+  packetCharLimit: number;
+  dbPath?: string | null;
+  supportedTypes: MemoryType[];
+  requiresRestart: boolean;
+}
+
+export interface MemorySettingsResponse {
+  memory: MemorySettings;
+  available: boolean;
+}
+
+export interface MemorySettingsUpdate {
+  enabled?: boolean;
+  injectionMode?: MemoryInjectionMode;
+  retrievalLimit?: number;
+  packetCharLimit?: number;
+  dbPath?: string | null;
+}
+
+export interface MemorySettingsUpdateResponse extends MemorySettingsResponse {
+  requires_restart: boolean;
+}
+
+export interface TypedMemoryRecord {
+  id: string;
+  user_id: string;
+  memory_type: MemoryType;
+  text: string;
+  confidence: number;
+  evidence_event_id?: string | null;
+  provenance?: Record<string, unknown> | null;
+  scope?: Record<string, unknown> | null;
+  dedupe_key?: string | null;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  retired_at?: string | null;
+  retired_reason?: string | null;
+  retired_evidence_event_id?: string | null;
+  superseded_by_id?: string | null;
+  deleted_at?: string | null;
+}
+
+export interface MemoryTypedListResponse {
+  available: boolean;
+  memories: TypedMemoryRecord[];
+}
+
+export interface MemoryTypedRetireResponse {
+  memory: TypedMemoryRecord;
 }
 
 export interface SlashCommand {

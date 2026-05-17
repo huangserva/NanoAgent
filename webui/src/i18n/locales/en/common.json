@@ -65,7 +65,8 @@
     },
     "nav": {
       "general": "General",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "External Memory"
     },
     "sections": {
       "interface": "Interface",
@@ -144,6 +145,44 @@
         "baseUrlRequired": "Base URL is required for SearXNG.",
         "missingCredential": "Add the required credential before saving.",
         "saveHint": "Changes apply to new web search requests."
+      }
+    },
+    "memory": {
+      "title": "External Memory",
+      "description": "Configure runtime memory retrieval.",
+      "notAvailable": "External memory is disabled",
+      "notAvailableDescription": "Enable it above and restart to use the inspector.",
+      "fields": {
+        "enabled": "Enabled",
+        "injectionMode": "Injection mode",
+        "retrievalLimit": "Retrieval limit",
+        "packetCharLimit": "Packet limit",
+        "dbPath": "DB path"
+      },
+      "injectionModes": {
+        "tools_only": "Tools only",
+        "auto_inject": "Auto inject",
+        "both": "Both"
+      },
+      "inspector": {
+        "title": "Typed Memories",
+        "description": "Review active structured memories for this WebUI user.",
+        "empty": "No memories found.",
+        "refresh": "Refresh",
+        "filters": {
+          "all": "All",
+          "preference": "Preference",
+          "profile_fact": "Profile Fact",
+          "task_state": "Task State",
+          "project_fact": "Project Fact"
+        },
+        "row": {
+          "confidence": "Confidence",
+          "updated": "Updated",
+          "evidence": "Evidence",
+          "retire": "Retire",
+          "retireConfirm": "Retire this memory?"
+        }
       }
     }
   },

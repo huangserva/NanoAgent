@@ -46,7 +46,8 @@
     },
     "nav": {
       "general": "一般",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "外部メモリ"
     },
     "sections": {
       "interface": "インターフェース",
@@ -125,6 +126,44 @@
         "baseUrlRequired": "SearXNG には Base URL が必要です。",
         "missingCredential": "保存する前に必要な認証情報を入力してください。",
         "saveHint": "変更は新しい web search リクエストに適用されます。"
+      }
+    },
+    "memory": {
+      "title": "外部メモリ",
+      "description": "実行時のメモリ取得を設定します。",
+      "notAvailable": "外部メモリは無効です",
+      "notAvailableDescription": "上で有効化し、再起動するとインスペクターを使えます。",
+      "fields": {
+        "enabled": "有効",
+        "injectionMode": "注入モード",
+        "retrievalLimit": "取得上限",
+        "packetCharLimit": "パケット上限",
+        "dbPath": "DB パス"
+      },
+      "injectionModes": {
+        "tools_only": "ツールのみ",
+        "auto_inject": "自動注入",
+        "both": "両方"
+      },
+      "inspector": {
+        "title": "型付きメモリ",
+        "description": "この WebUI ユーザーの有効な構造化メモリを確認します。",
+        "empty": "メモリはありません。",
+        "refresh": "更新",
+        "filters": {
+          "all": "すべて",
+          "preference": "好み",
+          "profile_fact": "プロフィール",
+          "task_state": "タスク状態",
+          "project_fact": "プロジェクト"
+        },
+        "row": {
+          "confidence": "信頼度",
+          "updated": "更新",
+          "evidence": "証拠",
+          "retire": "無効化",
+          "retireConfirm": "このメモリを無効化しますか？"
+        }
       }
     }
   },

@@ -53,7 +53,8 @@
     },
     "nav": {
       "general": "通用",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "外部记忆"
     },
     "sections": {
       "interface": "界面",
@@ -132,6 +133,44 @@
         "baseUrlRequired": "SearXNG 需要 Base URL。",
         "missingCredential": "填写所需凭证后才能保存。",
         "saveHint": "改动会应用到新的 web search 请求。"
+      }
+    },
+    "memory": {
+      "title": "外部记忆",
+      "description": "配置运行时记忆检索。",
+      "notAvailable": "外部记忆已禁用",
+      "notAvailableDescription": "在上方启用并重启后可使用检查器。",
+      "fields": {
+        "enabled": "启用",
+        "injectionMode": "注入模式",
+        "retrievalLimit": "检索数量",
+        "packetCharLimit": "包字符上限",
+        "dbPath": "数据库路径"
+      },
+      "injectionModes": {
+        "tools_only": "仅工具",
+        "auto_inject": "自动注入",
+        "both": "两者"
+      },
+      "inspector": {
+        "title": "类型化记忆",
+        "description": "查看当前 WebUI 用户的活跃结构化记忆。",
+        "empty": "暂无记忆。",
+        "refresh": "刷新",
+        "filters": {
+          "all": "全部",
+          "preference": "偏好",
+          "profile_fact": "个人事实",
+          "task_state": "任务状态",
+          "project_fact": "项目事实"
+        },
+        "row": {
+          "confidence": "置信度",
+          "updated": "更新",
+          "evidence": "证据",
+          "retire": "停用",
+          "retireConfirm": "停用这条记忆？"
+        }
       }
     }
   },

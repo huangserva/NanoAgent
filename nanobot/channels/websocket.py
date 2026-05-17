@@ -18,6 +18,7 @@ import ssl
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import parse_qs, unquote, urlparse
@@ -566,6 +567,7 @@ class WebSocketChannel(BaseChannel):
         session_manager: "SessionManager | None" = None,
         static_dist_path: Path | None = None,
         runtime_model_name: Callable[[], str | None] | None = None,
+        agent_loop: Any | None = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
@@ -588,6 +590,7 @@ class WebSocketChannel(BaseChannel):
             static_dist_path.resolve() if static_dist_path is not None else None
         )
         self._runtime_model_name = runtime_model_name
+        self.loop = agent_loop
         # Process-local secret used to HMAC-sign media URLs. The signed URL is
         # the capability — anyone who holds a valid URL can fetch that one
         # file, nothing else. The secret regenerates on restart so links
@@ -762,6 +765,23 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/settings/feishu/update":
             return self._handle_settings_feishu_update(request)
 
+        if got == "/api/settings/memory":
+            return self._handle_settings_memory(request)
+
+        if got == "/api/settings/memory/update":
+            return self._handle_settings_memory_update(request)
+
+        if got == "/api/memory/typed":
+            return self._handle_memory_typed_list(request)
+
+        m = re.match(r"^/api/memory/typed/([^/]+)$", got)
+        if m:
+            return self._handle_memory_typed_get(request, m.group(1))
+
+        m = re.match(r"^/api/memory/typed/([^/]+)/retire$", got)
+        if m:
+            return self._handle_memory_typed_retire(request, m.group(1))
+
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
@@ -929,6 +949,7 @@ class WebSocketChannel(BaseChannel):
                 "providers": list(_WEB_SEARCH_PROVIDER_OPTIONS),
             },
             "feishu": _feishu_settings_payload(feishu_config),
+            "memory": self._memory_settings_payload(config, requires_restart=False)["memory"],
             "runtime": {
                 "config_path": str(get_config_path().expanduser()),
             },
@@ -1173,6 +1194,190 @@ class WebSocketChannel(BaseChannel):
             setattr(config.channels, "feishu", feishu_config)
             save_config(config)
         return _http_json_response(self._settings_payload(requires_restart=changed))
+
+    def _external_memory_bridge(self) -> Any | None:
+        loop = getattr(self, "loop", None)
+        return getattr(loop, "external_memory", None) if loop is not None else None
+
+    def _memory_settings_payload(
+        self,
+        config: Any,
+        *,
+        requires_restart: bool,
+    ) -> dict[str, Any]:
+        from nanobot.config.paths import get_memory_service_db_path
+        from nanobot.memory_service.service import MemoryService
+
+        bridge = self._external_memory_bridge()
+        external = config.agents.defaults.external_memory
+        db_path = external.db_path or str(get_memory_service_db_path())
+        if bridge is not None:
+            try:
+                db_path = str(bridge.service.store.db_path)
+            except Exception:
+                db_path = external.db_path or str(get_memory_service_db_path())
+        return {
+            "memory": {
+                "enabled": bool(external.enabled),
+                "injectionMode": getattr(bridge, "injection_mode", external.injection_mode),
+                "retrievalLimit": int(getattr(bridge, "retrieval_limit", external.retrieval_limit)),
+                "packetCharLimit": int(getattr(bridge, "packet_char_limit", external.packet_char_limit)),
+                "dbPath": db_path,
+                "supportedTypes": sorted(MemoryService.typed_memory_types),
+                "requiresRestart": requires_restart,
+            },
+            "available": bridge is not None,
+        }
+
+    def _handle_settings_memory(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from nanobot.config.loader import load_config
+
+        return _http_json_response(self._memory_settings_payload(load_config(), requires_restart=False))
+
+    def _handle_settings_memory_update(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from nanobot.config.loader import load_config, save_config
+
+        query = _parse_query(request.path)
+        config = load_config()
+        external = config.agents.defaults.external_memory
+        changed = False
+        requires_restart = False
+        bridge = self._external_memory_bridge()
+
+        enabled = _parse_bool_param(_query_first(query, "enabled"), field="enabled")
+        if isinstance(enabled, str):
+            return _http_error(400, enabled)
+        if enabled is not None and external.enabled != enabled:
+            external.enabled = enabled
+            changed = True
+            requires_restart = True
+
+        injection_mode = _query_first(query, "injection_mode") or _query_first(query, "injectionMode")
+        if injection_mode is not None:
+            injection_mode = injection_mode.strip()
+            if injection_mode not in {"tools_only", "auto_inject", "both"}:
+                return _http_error(400, "injection_mode must be tools_only, auto_inject, or both")
+            if external.injection_mode != injection_mode:
+                external.injection_mode = injection_mode
+                changed = True
+            if bridge is not None:
+                bridge.injection_mode = injection_mode
+
+        for query_key, attr, min_value, max_value in (
+            ("retrieval_limit", "retrieval_limit", 1, 20),
+            ("packet_char_limit", "packet_char_limit", 256, 8000),
+        ):
+            raw = _query_first(query, query_key)
+            if raw is None:
+                raw = _query_first(query, "".join([query_key.split("_")[0], *[part.capitalize() for part in query_key.split("_")[1:]]]))
+            if raw is None:
+                continue
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return _http_error(400, f"{query_key} must be an integer")
+            if value < min_value or value > max_value:
+                return _http_error(400, f"{query_key} must be between {min_value} and {max_value}")
+            if getattr(external, attr) != value:
+                setattr(external, attr, value)
+                changed = True
+            if bridge is not None:
+                setattr(bridge, attr, value)
+
+        db_path = _query_first(query, "db_path") or _query_first(query, "dbPath")
+        if db_path is not None:
+            db_path = db_path.strip() or None
+            if external.db_path != db_path:
+                external.db_path = db_path
+                changed = True
+                requires_restart = True
+
+        if changed:
+            save_config(config)
+        payload = self._memory_settings_payload(config, requires_restart=requires_restart)
+        payload["requires_restart"] = requires_restart
+        return _http_json_response(payload)
+
+    def _memory_user_id(self, request: WsRequest) -> str | None:
+        bridge = self._external_memory_bridge()
+        if bridge is None:
+            return None
+        query = _parse_query(request.path)
+        client_id = (_query_first(query, "client_id") or _query_first(query, "clientId") or "").strip()
+        if not client_id:
+            client_id = _bearer_token(request.headers) or "unknown"
+        if len(client_id) > 128:
+            client_id = client_id[:128]
+        return bridge.subject_key(client_id)
+
+    def _handle_memory_typed_list(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        bridge = self._external_memory_bridge()
+        if bridge is None:
+            return _http_json_response({"available": False, "memories": []})
+        from nanobot.memory_service.service import MemoryService
+
+        query = _parse_query(request.path)
+        memory_type = _query_first(query, "memory_type") or _query_first(query, "memoryType")
+        if memory_type is not None:
+            memory_type = memory_type.strip()
+            if memory_type and memory_type not in MemoryService.typed_memory_types:
+                return _http_error(400, "unsupported memory_type")
+            memory_type = memory_type or None
+        raw_limit = _query_first(query, "limit")
+        try:
+            limit = int(raw_limit) if raw_limit is not None else 50
+        except (TypeError, ValueError):
+            return _http_error(400, "limit must be an integer")
+        limit = max(1, min(limit, 200))
+        memories = bridge.service.list_active_typed_memories(
+            user_id=self._memory_user_id(request) or bridge.subject_key(None),
+            memory_type=memory_type,
+            limit=limit,
+        )
+        return _http_json_response({"available": True, "memories": [asdict(memory) for memory in memories]})
+
+    def _handle_memory_typed_get(self, request: WsRequest, memory_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        bridge = self._external_memory_bridge()
+        if bridge is None:
+            return _http_error(503, "external memory unavailable")
+        try:
+            memory = bridge.service.store.get_typed_memory(unquote(memory_id))
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        if memory is None:
+            return _http_error(404, "typed memory not found")
+        return _http_json_response({"memory": asdict(memory)})
+
+    def _handle_memory_typed_retire(self, request: WsRequest, memory_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        bridge = self._external_memory_bridge()
+        if bridge is None:
+            return _http_error(503, "external memory unavailable")
+        query = _parse_query(request.path)
+        status = (_query_first(query, "status") or "inactive").strip()
+        if status not in {"inactive", "deleted"}:
+            return _http_error(400, "status must be inactive or deleted")
+        reason = _query_first(query, "reason")
+        try:
+            memory = bridge.service.retire_typed_memory(
+                unquote(memory_id),
+                status=status,
+                reason=reason.strip() if reason is not None else None,
+            )
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        if memory is None:
+            return _http_error(404, "typed memory not found")
+        return _http_json_response({"memory": asdict(memory)})
 
     @staticmethod
     def _is_websocket_channel_session_key(key: str) -> bool:

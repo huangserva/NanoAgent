@@ -4,6 +4,7 @@ import asyncio
 import functools
 import json
 import time
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -29,7 +30,11 @@ from nanobot.channels.websocket import (
     publish_runtime_model_update,
 )
 from nanobot.config.loader import load_config, save_config
+from nanobot.config.paths import get_memory_service_db_path
 from nanobot.config.schema import Config
+from nanobot.memory_service.bridge import ExternalMemoryBridge
+from nanobot.memory_service.service import MemoryService
+from nanobot.memory_service.store import MemoryStore
 
 # -- Shared helpers (aligned with test_websocket_integration.py) ---------------
 
@@ -1051,6 +1056,355 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert saved.channels.feishu["groupPolicy"] == "open"
         assert saved.channels.feishu["streaming"] is False
         assert saved.channels.feishu["domain"] == "lark"
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_api_returns_memory_section(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29894
+    config_path = tmp_path / "config.json"
+    db_path = tmp_path / "memory.db"
+    config = Config()
+    config.agents.defaults.external_memory.enabled = True
+    config.agents.defaults.external_memory.db_path = str(db_path)
+    config.agents.defaults.external_memory.injection_mode = "both"
+    config.agents.defaults.external_memory.retrieval_limit = 3
+    config.agents.defaults.external_memory.packet_char_limit = 2000
+    save_config(config, config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    bridge = ExternalMemoryBridge(MemoryService(MemoryStore(db_path)), workspace=tmp_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(f"http://127.0.0.1:{port}/api/settings/memory", headers={"Authorization": "Bearer tok"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is True
+        assert body["memory"]["enabled"] is True
+        assert body["memory"]["injectionMode"] == "both"
+        assert body["memory"]["retrievalLimit"] == 3
+        assert body["memory"]["packetCharLimit"] == 2000
+        assert body["memory"]["dbPath"] == str(db_path)
+        assert set(body["memory"]["supportedTypes"]) == {"preference", "profile_fact", "task_state", "project_fact"}
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_api_memory_section_when_unavailable(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29895
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(f"http://127.0.0.1:{port}/api/settings/memory", headers={"Authorization": "Bearer tok"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["available"] is False
+        assert body["memory"]["enabled"] is False
+        assert body["memory"]["injectionMode"] == "both"
+        assert body["memory"]["retrievalLimit"] == 3
+        assert body["memory"]["dbPath"] == str(get_memory_service_db_path())
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_memory_update_toggles_enabled_and_persists_config(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29896
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(f"http://127.0.0.1:{port}/api/settings/memory/update?enabled=true", headers={"Authorization": "Bearer tok"})
+        assert response.status_code == 200
+        assert response.json()["requires_restart"] is True
+        assert load_config(config_path).agents.defaults.external_memory.enabled is True
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_memory_update_hot_updatable_fields_no_restart(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29897
+    config_path = tmp_path / "config.json"
+    config = Config()
+    config.agents.defaults.external_memory.enabled = True
+    save_config(config, config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    bridge = ExternalMemoryBridge(MemoryService(MemoryStore(tmp_path / "memory.db")), workspace=tmp_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/memory/update?retrieval_limit=5&packet_char_limit=3000&injection_mode=tools_only",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 200
+        assert response.json()["requires_restart"] is False
+        assert bridge.retrieval_limit == 5
+        assert bridge.packet_char_limit == 3000
+        assert bridge.injection_mode == "tools_only"
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_memory_update_invalid_injection_mode_returns_400(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29902
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/memory/update?injection_mode=garbage",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 400
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_memory_update_out_of_range_retrieval_limit_returns_400(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29903
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/memory/update?retrieval_limit=999",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 400
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_settings_memory_update_out_of_range_packet_char_limit_returns_400(bus: MagicMock, monkeypatch, tmp_path) -> None:
+    port = 29904
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/memory/update?packet_char_limit=10",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 400
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_list_returns_records_scoped_to_client(bus: MagicMock, tmp_path) -> None:
+    port = 29898
+    service = MemoryService(MemoryStore(tmp_path / "memory.db"))
+    bridge = ExternalMemoryBridge(service, workspace=tmp_path)
+    service.upsert_typed_memory(
+        user_id=bridge.subject_key("client-a"),
+        memory_type="preference",
+        text="I prefer concise answers.",
+        confidence=0.9,
+    )
+    service.upsert_typed_memory(
+        user_id=bridge.subject_key("client-b"),
+        memory_type="preference",
+        text="Other user memory.",
+        confidence=0.9,
+    )
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed?client_id=client-a&memory_type=preference",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 200
+        memories = response.json()["memories"]
+        assert [memory["text"] for memory in memories] == ["I prefer concise answers."]
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_list_invalid_memory_type_returns_400(bus: MagicMock, tmp_path) -> None:
+    port = 29905
+    bridge = ExternalMemoryBridge(MemoryService(MemoryStore(tmp_path / "memory.db")), workspace=tmp_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed?memory_type=garbage",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 400
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_list_returns_empty_when_unavailable(bus: MagicMock) -> None:
+    port = 29899
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(f"http://127.0.0.1:{port}/api/memory/typed", headers={"Authorization": "Bearer tok"})
+        assert response.status_code == 200
+        assert response.json() == {"available": False, "memories": []}
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_retire_unavailable_returns_503(bus: MagicMock) -> None:
+    port = 29906
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=None)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed/mem-1/retire",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 503
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_retire_marks_inactive(bus: MagicMock, tmp_path) -> None:
+    port = 29900
+    service = MemoryService(MemoryStore(tmp_path / "memory.db"))
+    bridge = ExternalMemoryBridge(service, workspace=tmp_path)
+    record = service.upsert_typed_memory(
+        user_id=bridge.subject_key("client-a"),
+        memory_type="task_state",
+        text="We are debugging memory UI.",
+        confidence=0.8,
+    ).memory
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        retired = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed/{record.id}/retire?status=inactive&reason=done",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert retired.status_code == 200
+        assert retired.json()["memory"]["status"] == "inactive"
+        listed = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed?client_id=client-a",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert listed.json()["memories"] == []
+        fetched = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed/{record.id}",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert fetched.status_code == 200
+        assert fetched.json()["memory"]["id"] == record.id
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_retire_handles_url_encoded_id(bus: MagicMock) -> None:
+    port = 29907
+    service = MagicMock()
+    service.retire_typed_memory.return_value = None
+    bridge = SimpleNamespace(service=service)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed/mem%2F1/retire?status=inactive",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 404
+        service.retire_typed_memory.assert_called_once_with("mem/1", status="inactive", reason=None)
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
+async def test_memory_typed_retire_missing_returns_404(bus: MagicMock, tmp_path) -> None:
+    port = 29901
+    bridge = ExternalMemoryBridge(MemoryService(MemoryStore(tmp_path / "memory.db")), workspace=tmp_path)
+    channel = _ch(bus, port=port)
+    channel.loop = SimpleNamespace(external_memory=bridge)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        response = await _http_get(
+            f"http://127.0.0.1:{port}/api/memory/typed/missing/retire",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert response.status_code == 404
     finally:
         await channel.stop()
         await server_task

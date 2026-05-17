@@ -46,7 +46,8 @@
     },
     "nav": {
       "general": "Général",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "Mémoire externe"
     },
     "sections": {
       "interface": "Interface",
@@ -125,6 +126,44 @@
         "baseUrlRequired": "SearXNG nécessite une Base URL.",
         "missingCredential": "Ajoutez l'identifiant requis avant d'enregistrer.",
         "saveHint": "Les changements s'appliquent aux nouvelles requêtes web search."
+      }
+    },
+    "memory": {
+      "title": "Mémoire externe",
+      "description": "Configurer la récupération mémoire au runtime.",
+      "notAvailable": "La mémoire externe est désactivée",
+      "notAvailableDescription": "Activez-la ci-dessus puis redémarrez pour utiliser l’inspecteur.",
+      "fields": {
+        "enabled": "Activée",
+        "injectionMode": "Mode d’injection",
+        "retrievalLimit": "Limite de recherche",
+        "packetCharLimit": "Limite du paquet",
+        "dbPath": "Chemin DB"
+      },
+      "injectionModes": {
+        "tools_only": "Outils seuls",
+        "auto_inject": "Injection auto",
+        "both": "Les deux"
+      },
+      "inspector": {
+        "title": "Mémoires typées",
+        "description": "Voir les mémoires structurées actives de cet utilisateur WebUI.",
+        "empty": "Aucune mémoire.",
+        "refresh": "Actualiser",
+        "filters": {
+          "all": "Tout",
+          "preference": "Préférence",
+          "profile_fact": "Profil",
+          "task_state": "État tâche",
+          "project_fact": "Projet"
+        },
+        "row": {
+          "confidence": "Confiance",
+          "updated": "Mis à jour",
+          "evidence": "Preuve",
+          "retire": "Retirer",
+          "retireConfirm": "Retirer cette mémoire ?"
+        }
       }
     }
   },

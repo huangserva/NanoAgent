@@ -46,7 +46,8 @@
     },
     "nav": {
       "general": "Umum",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "Memori Eksternal"
     },
     "sections": {
       "interface": "Antarmuka",
@@ -125,6 +126,44 @@
         "baseUrlRequired": "SearXNG memerlukan Base URL.",
         "missingCredential": "Tambahkan kredensial yang diperlukan sebelum menyimpan.",
         "saveHint": "Perubahan berlaku untuk permintaan web search baru."
+      }
+    },
+    "memory": {
+      "title": "Memori Eksternal",
+      "description": "Atur pengambilan memori runtime.",
+      "notAvailable": "Memori eksternal nonaktif",
+      "notAvailableDescription": "Aktifkan di atas lalu mulai ulang untuk memakai inspektor.",
+      "fields": {
+        "enabled": "Aktif",
+        "injectionMode": "Mode injeksi",
+        "retrievalLimit": "Batas ambil",
+        "packetCharLimit": "Batas paket",
+        "dbPath": "Path DB"
+      },
+      "injectionModes": {
+        "tools_only": "Hanya alat",
+        "auto_inject": "Injeksi otomatis",
+        "both": "Keduanya"
+      },
+      "inspector": {
+        "title": "Memori Bertipe",
+        "description": "Lihat memori terstruktur aktif untuk pengguna WebUI ini.",
+        "empty": "Tidak ada memori.",
+        "refresh": "Segarkan",
+        "filters": {
+          "all": "Semua",
+          "preference": "Preferensi",
+          "profile_fact": "Fakta profil",
+          "task_state": "Status tugas",
+          "project_fact": "Fakta proyek"
+        },
+        "row": {
+          "confidence": "Keyakinan",
+          "updated": "Diperbarui",
+          "evidence": "Bukti",
+          "retire": "Nonaktifkan",
+          "retireConfirm": "Nonaktifkan memori ini?"
+        }
       }
     }
   },

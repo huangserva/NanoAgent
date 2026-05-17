@@ -46,7 +46,8 @@
     },
     "nav": {
       "general": "General",
-      "byok": "BYOK"
+      "byok": "BYOK",
+      "memory": "Memoria externa"
     },
     "sections": {
       "interface": "Interfaz",
@@ -125,6 +126,44 @@
         "baseUrlRequired": "SearXNG requiere una Base URL.",
         "missingCredential": "Añade la credencial requerida antes de guardar.",
         "saveHint": "Los cambios se aplican a nuevas solicitudes de web search."
+      }
+    },
+    "memory": {
+      "title": "Memoria externa",
+      "description": "Configura la recuperación de memoria en runtime.",
+      "notAvailable": "La memoria externa está desactivada",
+      "notAvailableDescription": "Actívala arriba y reinicia para usar el inspector.",
+      "fields": {
+        "enabled": "Activada",
+        "injectionMode": "Modo de inyección",
+        "retrievalLimit": "Límite de búsqueda",
+        "packetCharLimit": "Límite de paquete",
+        "dbPath": "Ruta DB"
+      },
+      "injectionModes": {
+        "tools_only": "Solo herramientas",
+        "auto_inject": "Autoinyectar",
+        "both": "Ambos"
+      },
+      "inspector": {
+        "title": "Memorias tipadas",
+        "description": "Revisa memorias estructuradas activas de este usuario WebUI.",
+        "empty": "No hay memorias.",
+        "refresh": "Actualizar",
+        "filters": {
+          "all": "Todo",
+          "preference": "Preferencia",
+          "profile_fact": "Perfil",
+          "task_state": "Estado de tarea",
+          "project_fact": "Proyecto"
+        },
+        "row": {
+          "confidence": "Confianza",
+          "updated": "Actualizado",
+          "evidence": "Evidencia",
+          "retire": "Retirar",
+          "retireConfirm": "¿Retirar esta memoria?"
+        }
       }
     }
   },
